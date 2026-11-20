@@ -5,8 +5,8 @@ export const blocks = [
   ['松庭酒店',210,60], ['旧城唱片店',175,45], ['日常开支','fee'], ['光影展馆',225,66],
   ['银湾水族馆',230,70], ['河岸事件','event'], ['灯塔旅馆',205,58], ['渔港食堂',185,49],
   ['市政事件','event'], ['月台旅店',240,72], ['银杏展馆',220,64], ['中央钟楼',250,78],
-  ['石桥市集','gift'], ['风车工坊',175,46], ['棉纺仓库',205,58], ['工会事件','event'],
-  ['青石影厅',220,65], ['茉莉药房',180,50], ['广场维护','fee'], ['剧场后台',235,69],
+  ['拘留所','jail'], ['风车工坊',175,46], ['棉纺仓库',205,58], ['工会事件','event'],
+  ['青石影厅',220,65], ['茉莉药房',180,50], ['接受调查','detain'], ['剧场后台',235,69],
   ['远望天台',260,81], ['塔顶书房',230,70], ['山间事件','event'], ['山麓温泉',250,78],
   ['枫林补给','gift'], ['森林车站',240,74], ['月湖餐厅',265,84], ['湖心会馆',290,94],
 ];
@@ -14,6 +14,8 @@ const districts = ['晨光街','北岸街','滨河街','旧城街','银湾街','
 const events = [['周末市集客流增加', 65], ['道路维护摊费', -35], ['商户联盟发放补贴', 85], ['景观整修筹资', -50]];
 const resalePrice = (state, index) => Math.floor((blocks[index][1] + state.levels[index] * upgradeCost(index)) * 0.65);
 const maxFloors = 3;
+const detentionFee = 70;
+const detentionIndex = blocks.findIndex(([,type]) => type === 'jail');
 const upgradeCost = index => Math.ceil(blocks[index][1] * 0.45);
 const names = ['橙方','紫方'];
 
@@ -26,7 +28,7 @@ function rentAt(state, index) {
   return Math.ceil(rent * (100 + 60 * state.levels[index]) * (monopoly ? 125 : 100) / 10000);
 }
 
-const initialPlayer = () => ({ cash: 650, at: 0, boost: 0, shield: 0, audit: false });
+const initialPlayer = () => ({ cash: 650, at: 0, boost: 0, shield: 0, audit: false, detained: false });
 export function initialEstate() {
   return { players: [initialPlayer(), initialPlayer()], owners: Array(blocks.length).fill(null),
     levels: Array(blocks.length).fill(0), turn: 0, rounds: 0, eventDraw: 0, die: null, phase: 'roll', winner: null, notice: '掷骰开始，沿街区前进。' };
@@ -44,7 +46,7 @@ function endTurn(state) {
     state.phase = 'finished';
   } else {
     state.turn = 1 - state.turn;
-    state.phase = 'roll';
+    state.phase = state.players[state.turn].detained ? 'detention' : 'roll';
   }
 }
 
@@ -53,6 +55,19 @@ export function estateAction(state, action, die = 0, target = null) {
   const next = structuredClone(state);
   const side = state.turn;
   const player = next.players[side];
+  if (state.phase === 'detention') {
+    if (action === 'release' && player.cash >= detentionFee) {
+      player.cash -= detentionFee;
+      player.detained = false;
+      next.phase = 'roll';
+      next.notice = `${names[side]}缴费 ¥${detentionFee}，本回合可以掷骰。`;
+    } else if (action === 'wait') {
+      player.detained = false;
+      next.notice = `${names[side]}停一回合，下一次可以正常掷骰。`;
+      endTurn(next);
+    } else return state;
+    return next;
+  }
   if (state.phase === 'roll' && ['boost','shield'].includes(action) && !player[action]) {
     player[action] = 1;
     next.notice = `${names[side]}发动了${action === 'boost' ? '商圈推广' : '租金护盾'}。`;
@@ -94,7 +109,13 @@ export function estateAction(state, action, die = 0, target = null) {
   player.at = steps % blocks.length;
   const [name, type] = blocks[player.at];
   next.notice = `${names[side]}掷出 ${die}，到达${name}。${steps >= blocks.length ? '经过起点，获得 75。' : ''}`;
-  if (type === 'gift') {
+  if (type === 'detain') {
+    player.at = detentionIndex;
+    player.detained = true;
+    next.notice += '前往拘留所，下回合选择缴费离开或停一回合。';
+  } else if (type === 'jail') {
+    next.notice += '本次只是探访。';
+  } else if (type === 'gift') {
     player.cash += 55;
     next.notice += '获得市集补贴 55。';
   } else if (type === 'event') {
@@ -141,7 +162,7 @@ export function mountEstate() {
     const offset = index % edge;
     return [[edge-offset,edge],[0,edge-offset],[offset,0],[edge,offset]][Math.floor(index / edge)];
   });
-  const marks = { start: '↻', gift: '+', fee: '−', event: '✦' };
+  const marks = { start: '↻', gift: '+', fee: '−', event: '✦', jail: '▣', detain: '!' };
   let game = initialEstate();
   let focused = 0;
   const tiles = blocks.map(([name, type, rent], index) => {
@@ -207,29 +228,33 @@ export function mountEstate() {
     for (const [side, card] of players.entries()) {
       card.dataset.active = String(game.phase !== 'finished' && side === game.turn);
       card.querySelector('strong').textContent = `¥${game.players[side].cash}`;
-      card.querySelector('small').textContent = `${game.owners.filter(owner => owner === side).length} 块地产`;
+      card.querySelector('small').textContent = game.players[side].detained ? '拘留中' : `${game.owners.filter(owner => owner === side).length} 块地产`;
     }
     const [name, type, rent] = blocks[focused];
     deed.querySelector('strong').textContent = name;
     const owner = game.owners[focused];
     deed.querySelector('small').textContent = rent
       ? `${districts[Math.floor(focused / 4)]} · ${owner === null ? '待售' : names[owner] + '持有'}${game.levels[focused] ? ' · ' + game.levels[focused] + ' 层' : ''}`
-      : { start: '经过可收取 ¥75', gift: '停留可获得 ¥55', fee: '停留需支付 ¥40', event: '触发一张街区事件卡' }[type];
+      : { start: '经过可收取 ¥75', gift: '停留可获得 ¥55', fee: '停留需支付 ¥40', event: '触发一张街区事件卡', jail: '正常到达只算探访', detain: '进入拘留所，下回合选择离开方式' }[type];
     deed.querySelector('b').textContent = rent ? owner === null ? `¥${type}` : `租 ¥${rentAt(game,focused)}` : '';
     turn.textContent = game.phase === 'finished' ? game.winner === 2 ? '平局' : `${names[game.winner]}获胜`
       : `${names[game.turn]}行动 · 第 ${game.rounds + 1} / 40 回合`;
     dice.textContent = game.die ? ['','⚀','⚁','⚂','⚃','⚄','⚅'][game.die] : '⚄';
-    notice.textContent = game.notice;
+    notice.textContent = game.phase === 'detention' ? `缴费 ¥${detentionFee} 后可掷骰，或停一回合免费离开。` : game.notice;
     for (const button of controls) {
       const action = button.dataset.estateAction;
       if (action === 'upgrade' && game.phase === 'upgrade') button.textContent = `盖第 ${game.levels[game.players[game.turn].at] + 1} 层 · ¥${upgradeCost(game.players[game.turn].at)}`;
       if (action === 'sell') {
         button.hidden = game.phase !== 'roll' || owner !== game.turn;
         if (!button.hidden) button.textContent = `卖出地契 · ¥${resalePrice(game, focused)}`;
+      } else if (action === 'release' || action === 'wait') {
+        button.hidden = game.phase !== 'detention';
+        if (action === 'release') button.textContent = `缴费离开 · ¥${detentionFee}`;
       } else if (action === 'buy' || action === 'upgrade') button.hidden = game.phase !== action;
       else if (action === 'skip') button.hidden = !['buy','upgrade'].includes(game.phase);
       else if (action !== 'restart') button.hidden = game.phase !== 'roll';
       button.disabled = ['boost','shield'].includes(action) && Boolean(game.players[game.turn][action]);
+      if (action === 'release') button.disabled = game.players[game.turn].cash < detentionFee;
       if (action === 'audit') button.disabled = game.players[game.turn].audit || game.players[1-game.turn].boost !== 1;
     }
   }

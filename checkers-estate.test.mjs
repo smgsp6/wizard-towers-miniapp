@@ -78,3 +78,32 @@ test('estate events, opponent audit and resales change only the relevant ledger'
   assert.equal(game.players[0].cash, 786);
   assert.equal(game.eventDraw, 1);
 });
+
+test('estate detention distinguishes visiting, paying and waiting', () => {
+  const start = initialEstate();
+  start.players[0].at = 23;
+  const visit = estateAction(start, 'roll', 1);
+  assert.equal(visit.players[0].at, 24);
+  assert.equal(visit.players[0].detained, false);
+
+  start.players[0].at = 29;
+  const sent = estateAction(start, 'roll', 1);
+  assert.equal(sent.players[0].at, 24);
+  assert.equal(sent.players[0].detained, true);
+  let game = estateAction(sent, 'roll', 3);
+  assert.equal(game.turn, 0);
+  assert.equal(game.phase, 'detention');
+  assert.equal(estateAction(game, 'roll', 6), game);
+  const paid = estateAction(game, 'release');
+  assert.equal(paid.players[0].cash, 580);
+  assert.equal(paid.players[0].detained, false);
+  assert.equal(paid.phase, 'roll');
+  assert.equal(paid.turn, 0);
+
+  game.players[0].cash = 60;
+  assert.equal(estateAction(game, 'release'), game);
+  const waited = estateAction(game, 'wait');
+  assert.equal(waited.players[0].cash, 60);
+  assert.equal(waited.players[0].detained, false);
+  assert.equal(waited.turn, 1);
+});
