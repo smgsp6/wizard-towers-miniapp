@@ -1,5 +1,6 @@
 **
 !server.mjs
+!admin-panel.html
 !room-store.mjs
 !gomoku-ai.mjs
 !public/

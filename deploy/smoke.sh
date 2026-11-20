@@ -9,7 +9,7 @@ cleanup() {
   rm -rf -- "$workspace"
 }
 trap cleanup EXIT
-cp -r Dockerfile Dockerfile.proxy .dockerignore compose.yaml server.mjs room-store.mjs gomoku-ai.mjs public deploy "$workspace/"
+cp -r Dockerfile Dockerfile.proxy .dockerignore compose.yaml admin-panel.html server.mjs room-store.mjs gomoku-ai.mjs public deploy "$workspace/"
 mkdir -m 700 "$workspace/private"
 printf 'GOMOKU_DOMAIN=localhost\n' > "$workspace/private/compose.env"
 printf 'TELEGRAM_OWNER_ID=101\nTELEGRAM_BOT_TOKEN=synthetic-testing\n' > "$workspace/private/app.env"

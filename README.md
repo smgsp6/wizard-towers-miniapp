@@ -44,3 +44,5 @@ bash deploy/install.sh --register-webhook
 V 模式由管理员在指定好友局开启，可选定两个空位并确认。服务器按选定顺序落同色子，不要求当前轮到管理员。第一枚已结束对局时不会落第二枚。执行后取消待执行的 AI 落子。
 
 镜像审查来源：[Node.js 24.22.1 发布说明](https://nodejs.org/en/blog/release/v24.22.1)、[Caddy 2.11.9 发布](https://github.com/caddyserver/caddy/releases/tag/v2.11.9)、[Caddy 安全公告](https://github.com/caddyserver/caddy/security/advisories)、[Docker Official Images](https://github.com/docker-library/official-images)。已按上游公告选择修复后的 Caddy 版本。当前开发环境无法访问 Debian 和 Alpine 的完整安全数据库，基础镜像传递依赖的完整漏洞扫描尚待完成。
+
+管理员界面由单独的服务端端点提供。该端点验证 Telegram 签名和 Owner ID。普通玩家收到的页面没有管理面板、AI 代下、VCF 提示、V 模式或清盘控制。

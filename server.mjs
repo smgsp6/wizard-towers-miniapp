@@ -155,11 +155,24 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
       }
     }
     const practice = req.url === '/api/practice';
-    if ((!practice && req.url !== '/api/room') || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
+    const panel = req.url === '/api/admin-panel' && req.method === 'GET';
+    if ((!panel && !practice && req.url !== '/api/room') || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
     if (!token || !validID(owner)) return send(503, { error: 'Telegram 对局服务尚未配置' });
     const id = telegramID(req.headers['x-telegram-init-data'], token);
     if (!id) return send(401, { error: '请从 Telegram 小程序重新打开大厅' });
     const admin = id === owner;
+    if (panel) {
+      if (!admin) return send(403, { error: '没有访问权限' });
+      try {
+        const html = await readFile(new URL('./admin-panel.html', import.meta.url));
+        return res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        }).end(html);
+      } catch {
+        return send(500, { error: '无法加载管理界面' });
+      }
+    }
     let action = null;
     if (req.method === 'POST') {
       try { action = await readJSON(req, 2048); } catch {}

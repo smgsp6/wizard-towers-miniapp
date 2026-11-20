@@ -49,7 +49,20 @@ test('only the owner and the seated authorized guest can play', async t => {
     return [res.status, await res.json()];
   }
   const move = (id, x, y) => call(id, {type:'move', x, y});
-  assert.equal((await fetch(address)).status, 200);
+  const page = await fetch(address);
+  assert.equal(page.status, 200);
+  assert.doesNotMatch(await page.text(), /id="(?:management|analysis|v-actions|reset)"|管理员工具/);
+  const getPanel = id => fetch(address + '/api/admin-panel', {
+    headers: id ? { 'X-Telegram-Init-Data': signed(id) } : {},
+  });
+  assert.equal((await getPanel(null)).status, 401);
+  assert.equal((await getPanel(202)).status, 403);
+  assert.equal((await getPanel(404)).status, 403);
+  assert.equal((await fetch(address + '/admin-panel.html')).status, 404);
+  const panel = await getPanel(101);
+  assert.equal(panel.status, 200);
+  assert.equal(panel.headers.get('cache-control'), 'no-store');
+  assert.match(await panel.text(), /管理员工具/);
   assert.equal((await call(null))[0], 401);
   assert.equal((await call(404))[0], 403);
   assert.equal((await move(101,0,0))[0], 409);
