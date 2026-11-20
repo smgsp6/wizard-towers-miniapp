@@ -90,12 +90,26 @@ if ! "${compose[@]}" up --build --detach --wait "${services[@]}" >/dev/null 2>&1
 fi
 ( printf '%s\n' "$mode" > private/deploy-mode ) 2>/dev/null || fail '服务已启动，但无法保存部署模式。'
 if $configure_cloudflare; then
-  read -r -p '输入 Cloudflare 区域的根域名（例如 example.com）：' cf_zone || fail '未收到区域根域名。'
-  read -r -p '输入现有 Tunnel 的编号（UUID）：' cf_tunnel || fail '未收到 Tunnel 编号。'
   read -rs -p '输入 Cloudflare API 令牌（输入内容不回显）：' cf_token || { printf '\n'; fail '未收到 Cloudflare API 令牌。'; }
-  printf '\n正在检查并配置这个游戏子域名……\n'
-  if ! printf '%s\n' "$cf_token" |
-      "${compose[@]}" exec -T app node deploy/cloudflare-route.mjs "$cf_zone" "$cf_tunnel" --apply 2>/dev/null; then
+  printf '\n正在查找可复用的 Cloudflare Tunnel……\n'
+  cf_command=("${compose[@]}" exec -T app node deploy/cloudflare-route.mjs)
+  if ! tunnel_list=$(printf '%s\n' "$cf_token" | "${cf_command[@]}" --list 2>/dev/null); then
+    unset cf_token
+    printf '%s\n' "$tunnel_list"
+    fail '未能查找可用的 Tunnel。'
+  fi
+  mapfile -t tunnels <<< "$tunnel_list"
+  selected=1
+  if (( ${#tunnels[@]} > 1 )); then
+    printf '有多条在线 Tunnel，请选择运行在这台 VPS 上的一条：\n'
+    for i in "${!tunnels[@]}"; do printf '%s) %s\n' "$((i+1))" "${tunnels[i]#*$'\t'}"; done
+    read -r -p '输入列表序号：' selected || fail '未收到选择。'
+    [[ $selected =~ ^[1-9][0-9]{0,2}$ ]] && (( selected <= ${#tunnels[@]} )) ||
+      fail '选择不在列表范围内。'
+  fi
+  chosen=${tunnels[selected-1]}
+  printf '正在为所选 Tunnel 设置游戏子域名……\n'
+  if ! printf '%s\n' "$cf_token" | "${cf_command[@]}" --apply "${chosen%%$'\t'*}" 2>/dev/null; then
     unset cf_token
     fail '游戏服务已启动，但 Cloudflare 配置未完成。请检查区域、Tunnel 编号和 API 令牌权限。'
   fi

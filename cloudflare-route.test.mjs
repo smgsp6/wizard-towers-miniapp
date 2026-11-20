@@ -19,6 +19,10 @@ test('Cloudflare route changes only the configured hostname and preserves other 
       const path = new URL(url).pathname;
       let result;
       if (path.endsWith('/zones')) result = zones;
+      else if (path.endsWith('/cfd_tunnel')) result = [
+        {id:'00000000-0000-4000-8000-000000000001',name:'游戏 Tunnel',config_src:'cloudflare',status:'healthy'},
+        {id:'00000000-0000-4000-8000-000000000002',name:'离线 Tunnel',config_src:'cloudflare',status:'inactive'},
+      ];
       else if (path.endsWith('/configurations')) {
         if (options.method === 'PUT') {
           const {config} = JSON.parse(options.body);
@@ -39,16 +43,16 @@ test('Cloudflare route changes only the configured hostname and preserves other 
     };
     process.on('exit', () => assert.equal(writes, process.argv.includes('--apply') ? 2 : 0));
   `;
-  for (const args of [[], ['--apply']]) {
+  for (const args of [['--list'], ['--apply','00000000-0000-4000-8000-000000000001']]) {
     const result = spawnSync(process.execPath, [
       '--import', 'data:text/javascript,' + encodeURIComponent(fixture),
-      'deploy/cloudflare-route.mjs', 'example.com', '00000000-0000-4000-8000-000000000001', ...args,
+      'deploy/cloudflare-route.mjs', ...args,
     ], {
       input: 'synthetic-token\n', encoding: 'utf8',
       env: { ...process.env, GOMOKU_DOMAIN: 'game.example.com' },
     });
     assert.equal(result.status, 0, result.stderr + result.stdout);
-    assert.match(result.stdout, args.length ? /代理 DNS 已设置/ : /尚未修改/);
-    assert.doesNotMatch(result.stdout, /synthetic-token/);
+    assert.match(result.stdout, args.includes('--apply') ? /代理 DNS 已设置/ : /游戏 Tunnel/);
+    assert.doesNotMatch(result.stdout, /synthetic-token|离线 Tunnel/);
   }
 });

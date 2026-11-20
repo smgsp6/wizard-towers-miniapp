@@ -77,4 +77,4 @@ bash deploy/install.sh --cloudflare-tunnel
 
 Tunnel 模式保留账号与 webhook 的限流。源站忽略传入的转发 IP，连接器流量共享应用的 IP 级额度。
 
-若要在 VPS 安装时自动配置现有 Tunnel，执行 `bash deploy/install.sh --configure-cloudflare`。需要已加入 Cloudflare 的根域名、现有 Tunnel UUID，以及限定在对应区域和账号的 Cloudflare API 令牌（区域读取、DNS 编辑、Cloudflare Tunnel 编辑）。连接器令牌不具备管理 DNS 的权限。这一步只修改安装时填写的游戏子域名。令牌在终端输入、不回显，不写入磁盘。请避免同时在 Cloudflare 后台编辑同一个 Tunnel；DNS 配置与路由配置是两个独立的 API 操作。
+若要在 VPS 安装时自动配置现有 Tunnel，执行 `bash deploy/install.sh --configure-cloudflare`。只需输入限定在对应区域和账号的 Cloudflare API 令牌（区域读取、DNS 编辑、Cloudflare Tunnel 编辑）。区域按已配置的游戏子域名自动识别。只有一条在线且由 Cloudflare 管理的 Tunnel 时自动选用，多条时按名称选序号。连接器令牌不具备管理 DNS 的权限。这一步只修改安装时填写的游戏子域名。令牌在终端输入、不回显，不写入磁盘。请避免同时在 Cloudflare 后台编辑同一个 Tunnel；DNS 配置与路由配置是两个独立的 API 操作。

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const [zoneName, tunnel, option] = process.argv.slice(2);
+const [option, selected] = process.argv.slice(2);
 const hostname = process.env.GOMOKU_DOMAIN?.toLowerCase();
 const token = readFileSync(0, 'utf8').trim();
 const domain = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -23,16 +23,33 @@ async function api(path, method = 'GET', body) {
 }
 
 try {
-  if (!token || !domain.test(zoneName ?? '') || !domain.test(hostname ?? '') ||
-      !hostname.endsWith('.' + zoneName) || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(tunnel ?? '') ||
-      ![undefined, '--apply'].includes(option)) {
-    stop('请提供区域根域名和 Tunnel 编号，并在终端中输入 Cloudflare API 令牌。');
+  if (!token || !domain.test(hostname ?? '') || !['--list', '--apply'].includes(option)) {
+    stop('请检查游戏子域名和 Cloudflare API 令牌。');
   }
-
-  const zones = (await api('/zones?name=' + encodeURIComponent(zoneName))).result;
-  if (zones.length !== 1 || zones[0].name !== zoneName || zones[0].status !== 'active') stop('找不到唯一且已启用的 Cloudflare 区域。');
-  const { id: zone, account } = zones[0];
+  const labels = hostname.split('.');
+  let activeZone;
+  for (let start = 1; start < labels.length - 1; start++) {
+    const name = labels.slice(start).join('.');
+    const zones = (await api('/zones?name=' + encodeURIComponent(name))).result;
+    activeZone = zones.find(zone => zone.name === name && zone.status === 'active');
+    if (activeZone) break;
+  }
+  if (!activeZone) stop('找不到这个游戏子域名所属的 Cloudflare 区域，请检查区域读取权限。');
+  const { id: zone, account } = activeZone;
   if (![zone, account?.id].every(id => /^[0-9a-f]{32}$/i.test(id))) stop('Cloudflare 返回了无效的区域或账号编号。');
+  const tunnelPath = `/accounts/${account.id}/cfd_tunnel`;
+  const listing = await api(tunnelPath + '?is_deleted=false&per_page=100');
+  if (listing.result_info?.total_pages > 1) stop('Tunnel 列表超过一页，请缩小令牌资源范围。');
+  const tunnels = listing.result.filter(entry => entry.config_src === 'cloudflare' &&
+    ['healthy', 'degraded'].includes(entry.status) &&
+    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(entry.id));
+  if (!tunnels.length) stop('找不到在线且由 Cloudflare 管理的 Tunnel，请先启动现有连接器。');
+  if (option === '--list') {
+    for (const { id, name } of tunnels) console.log(id + '\t' + String(name).replace(/[\x00-\x1f\x7f]/g, ' '));
+    process.exit(0);
+  }
+  const tunnel = tunnels.find(entry => entry.id === selected)?.id;
+  if (!tunnel) stop('选中的 Tunnel 已不可用，请重新运行。');
   const dnsPath = `/zones/${zone}/dns_records`;
   const path = `/accounts/${account.id}/cfd_tunnel/${tunnel}/configurations`;
   const target = `${tunnel}.cfargotunnel.com`;
@@ -51,29 +68,25 @@ try {
   if (matches.length > 1 || matches.some(rule => rule.path || rule.service !== origin)) stop('该子域名已有不同的 Tunnel 路由，已停止，保留原配置。');
   console.log(`游戏子域名：${hostname}，目标：${origin}。`);
   console.log(`Tunnel 路由：${matches.length ? '已就绪' : '待添加'}。DNS：${correctDNS ? '已就绪' : '待替换'}。`);
-  if (!option) {
-    console.log('以上为预检，尚未修改任何设置。加上 --apply 可执行。');
-  } else {
-    const latest = (await api(path)).result;
-    if (latest.version !== version || JSON.stringify(latest.config) !== JSON.stringify(config) ||
-        JSON.stringify(await records()) !== JSON.stringify(current)) stop('预检后配置发生变化，请重新运行。');
-    if (!matches.length) await api(path, 'PUT', { config: { ...config, ingress: [{ hostname, service: origin }, ...ingress] } });
-    if (!correctDNS) {
-      try {
-        await api(dnsPath + '/batch', 'POST', {
-          deletes: current.map(({ id }) => ({ id })),
-          posts: [{ type: 'CNAME', name: hostname, content: target, proxied: true, ttl: 1 }],
-        });
-      } catch (error) {
-        stop(`DNS 替换未确认。Tunnel 路由的添加可能已完成。请先重新预检。 ${error.message}`);
-      }
+  const latest = (await api(path)).result;
+  if (latest.version !== version || JSON.stringify(latest.config) !== JSON.stringify(config) ||
+      JSON.stringify(await records()) !== JSON.stringify(current)) stop('预检后配置发生变化，请重新运行。');
+  if (!matches.length) await api(path, 'PUT', { config: { ...config, ingress: [{ hostname, service: origin }, ...ingress] } });
+  if (!correctDNS) {
+    try {
+      await api(dnsPath + '/batch', 'POST', {
+        deletes: current.map(({ id }) => ({ id })),
+        posts: [{ type: 'CNAME', name: hostname, content: target, proxied: true, ttl: 1 }],
+      });
+    } catch (error) {
+      stop(`DNS 替换未确认。Tunnel 路由的添加可能已完成。请先重新预检。 ${error.message}`);
     }
-    const finalRoute = (await api(path)).result.config?.ingress;
-    if (!finalRoute?.some(rule => rule.hostname === hostname && rule.service === origin)) stop('未能验证新增的 Tunnel 路由。');
-    const final = await records();
-    if (!final.some(record => record.type === 'CNAME' && record.content === target && record.proxied)) stop('未能验证新的 DNS 记录。');
-    console.log('Tunnel 路由与代理 DNS 已设置。请验证公网 HTTPS。');
   }
+  const finalRoute = (await api(path)).result.config?.ingress;
+  if (!finalRoute?.some(rule => rule.hostname === hostname && rule.service === origin)) stop('未能验证新增的 Tunnel 路由。');
+  const final = await records();
+  if (!final.some(record => record.type === 'CNAME' && record.content === target && record.proxied)) stop('未能验证新的 DNS 记录。');
+  console.log('Tunnel 路由与代理 DNS 已设置。请验证公网 HTTPS。');
 } catch (error) {
   console.log('操作未完成：' + error.message);
   process.exitCode = 1;
