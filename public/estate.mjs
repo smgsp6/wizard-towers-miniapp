@@ -192,7 +192,8 @@ export function mountEstate(telegram) {
       dot.hidden = !dots.includes(pip);
     }
   }
-  const pose = (x,y,lift = 0) => `translateY(${lift}px) rotateX(-41deg) rotateY(-24deg) rotateX(90deg) rotateX(${x}deg) rotateY(${y}deg)`;
+  const pose = (x, y, lift = 0, tiltX = 0, tiltY = 0) =>
+    `translateY(${lift}px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) rotateX(${x}deg) rotateY(${y}deg)`;
   let mode = '';
   let remote = null;
   let admin = null;
@@ -348,7 +349,7 @@ export function mountEstate(telegram) {
     try {
       await cube.animate([
         { transform: pose(x,y) },
-        { transform: pose(x+220,y+125,-9), offset: .48 },
+        { transform: pose(x + 220, y + 125, -9, -41, -24), offset: .48 },
         { transform: pose(endX+360,endY+360) },
       ], { duration: 480, easing: 'cubic-bezier(.3,.1,.3,1)' }).finished;
     } catch {
