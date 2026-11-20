@@ -4,17 +4,20 @@ export const blocks = [
   ['咖啡小院',160,38], ['社区市集','gift'], ['石阶陶坊',180,47], ['滨河茶室',195,54],
   ['松庭酒店',210,60], ['旧城唱片店',175,45], ['日常开支','fee'], ['光影展馆',225,66],
   ['银湾水族馆',230,70], ['河岸事件','event'], ['灯塔旅馆',205,58], ['渔港食堂',185,49],
-  ['市政事件','event'], ['月台旅店',240,72], ['银杏展馆',220,64], ['中央钟楼',250,78],
+  ['银湾机场','airport'], ['月台旅店',240,72], ['银杏展馆',220,64], ['中央钟楼',250,78],
   ['拘留所','jail'], ['风车工坊',175,46], ['棉纺仓库',205,58], ['工会事件','event'],
   ['青石影厅',220,65], ['茉莉药房',180,50], ['接受调查','detain'], ['剧场后台',235,69],
   ['远望天台',260,81], ['塔顶书房',230,70], ['山间事件','event'], ['山麓温泉',250,78],
-  ['枫林补给','gift'], ['森林车站',240,74], ['月湖餐厅',265,84], ['湖心会馆',290,94],
+  ['月湖机场','airport'], ['森林车站',240,74], ['月湖餐厅',265,84], ['湖心会馆',290,94],
 ];
 const districts = ['晨光街','北岸街','滨河街','旧城街','银湾街','中央街','手作街','剧场街','望山街','月湖街'];
 const events = [['周末市集客流增加', 65], ['道路维护摊费', -35], ['商户联盟发放补贴', 85], ['景观整修筹资', -50]];
 const resalePrice = (state, index) => Math.floor((blocks[index][1] + state.levels[index] * upgradeCost(index)) * 0.65);
 const maxFloors = 3;
 const detentionFee = 70;
+const flightFee = 90;
+const airports = blocks.flatMap(([,type], index) => type === 'airport' ? [index] : []);
+const destinationAirport = origin => airports.find(index => index !== origin);
 const detentionIndex = blocks.findIndex(([,type]) => type === 'jail');
 const upgradeCost = index => Math.ceil(blocks[index][1] * 0.45);
 const names = ['橙方','紫方'];
@@ -68,6 +71,17 @@ export function estateAction(state, action, die = 0, target = null) {
     } else return state;
     return next;
   }
+  if (state.phase === 'flight') {
+    if (action === 'fly' && player.cash >= flightFee) {
+      player.cash -= flightFee;
+      player.at = destinationAirport(player.at);
+      next.notice = `${names[side]}支付 ¥${flightFee} 飞抵${blocks[player.at][0]}。`;
+    } else if (action === 'stay') {
+      next.notice = `${names[side]}选择留在${blocks[player.at][0]}。`;
+    } else return state;
+    endTurn(next);
+    return next;
+  }
   if (state.phase === 'roll' && ['boost','shield'].includes(action) && !player[action]) {
     player[action] = 1;
     next.notice = `${names[side]}发动了${action === 'boost' ? '商圈推广' : '租金护盾'}。`;
@@ -109,6 +123,11 @@ export function estateAction(state, action, die = 0, target = null) {
   player.at = steps % blocks.length;
   const [name, type] = blocks[player.at];
   next.notice = `${names[side]}掷出 ${die}，到达${name}。${steps >= blocks.length ? '经过起点，获得 75。' : ''}`;
+  if (type === 'airport' && player.cash >= flightFee) {
+    next.phase = 'flight';
+    next.notice += `可支付 ¥${flightFee} 飞往${blocks[destinationAirport(player.at)][0]}。`;
+    return next;
+  }
   if (type === 'detain') {
     player.at = detentionIndex;
     player.detained = true;
@@ -162,7 +181,7 @@ export function mountEstate() {
     const offset = index % edge;
     return [[edge-offset,edge],[0,edge-offset],[offset,0],[edge,offset]][Math.floor(index / edge)];
   });
-  const marks = { start: '↻', gift: '+', fee: '−', event: '✦', jail: '▣', detain: '!' };
+  const marks = { start: '↻', gift: '+', fee: '−', event: '✦', jail: '▣', detain: '!', airport: '✈' };
   let game = initialEstate();
   let focused = 0;
   const tiles = blocks.map(([name, type, rent], index) => {
@@ -235,7 +254,7 @@ export function mountEstate() {
     const owner = game.owners[focused];
     deed.querySelector('small').textContent = rent
       ? `${districts[Math.floor(focused / 4)]} · ${owner === null ? '待售' : names[owner] + '持有'}${game.levels[focused] ? ' · ' + game.levels[focused] + ' 层' : ''}`
-      : { start: '经过可收取 ¥75', gift: '停留可获得 ¥55', fee: '停留需支付 ¥40', event: '触发一张街区事件卡', jail: '正常到达只算探访', detain: '进入拘留所，下回合选择离开方式' }[type];
+      : { start: '经过可收取 ¥75', gift: '停留可获得 ¥55', fee: '停留需支付 ¥40', event: '触发一张街区事件卡', jail: '正常到达只算探访', detain: '进入拘留所，下回合选择离开方式', airport: `支付 ¥${flightFee} 飞往${blocks[destinationAirport(focused)]?.[0] ?? ''}` }[type];
     deed.querySelector('b').textContent = rent ? owner === null ? `¥${type}` : `租 ¥${rentAt(game,focused)}` : '';
     turn.textContent = game.phase === 'finished' ? game.winner === 2 ? '平局' : `${names[game.winner]}获胜`
       : `${names[game.turn]}行动 · 第 ${game.rounds + 1} / 40 回合`;
@@ -247,6 +266,9 @@ export function mountEstate() {
       if (action === 'sell') {
         button.hidden = game.phase !== 'roll' || owner !== game.turn;
         if (!button.hidden) button.textContent = `卖出地契 · ¥${resalePrice(game, focused)}`;
+      } else if (action === 'fly' || action === 'stay') {
+        button.hidden = game.phase !== 'flight';
+        if (action === 'fly') button.textContent = `搭乘航班 · ¥${flightFee}`;
       } else if (action === 'release' || action === 'wait') {
         button.hidden = game.phase !== 'detention';
         if (action === 'release') button.textContent = `缴费离开 · ¥${detentionFee}`;
@@ -268,7 +290,7 @@ export function mountEstate() {
     } else {
       const actor = game.turn;
       game = estateAction(game, action, action === 'roll' ? Math.floor(Math.random()*6) + 1 : 0, focused);
-      if (action === 'roll') {
+      if (action === 'roll' || action === 'fly') {
         focused = game.players[actor].at;
         follow(focused);
       }

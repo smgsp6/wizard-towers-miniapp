@@ -107,3 +107,21 @@ test('estate detention distinguishes visiting, paying and waiting', () => {
   assert.equal(waited.players[0].detained, false);
   assert.equal(waited.turn, 1);
 });
+
+test('estate airports allow optional paid travel without a start bonus', () => {
+  const first = initialEstate();
+  first.players[0].at = 35;
+  const landed = estateAction(first, 'roll', 1);
+  assert.equal(landed.phase, 'flight');
+  assert.equal(landed.players[0].at, 36);
+  const flown = estateAction(landed, 'fly');
+  assert.equal(flown.players[0].at, 20);
+  assert.equal(flown.players[0].cash, 560);
+  assert.equal(flown.turn, 1);
+  const stayed = estateAction(landed, 'stay');
+  assert.equal(stayed.players[0].at, 36);
+  assert.equal(stayed.players[0].cash, 650);
+  assert.equal(stayed.turn, 1);
+  first.players[0].cash = 50;
+  assert.equal(estateAction(first, 'roll', 1).phase, 'roll');
+});
