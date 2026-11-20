@@ -64,7 +64,13 @@ if (cd "$workspace" && COMPOSE_PROJECT_NAME="$project" bash deploy/install.sh --
   exit 1
 fi
 "${compose[@]}" stop proxy
-(cd "$workspace" && COMPOSE_PROJECT_NAME="$project" bash deploy/install.sh --cloudflare-tunnel </dev/null)
+(cd "$workspace" && COMPOSE_PROJECT_NAME="$project" bash deploy/install.sh --cloudflare-tunnel </dev/null) > "$workspace/installer-output"
+grep -Fq '正在构建并启动游戏服务' "$workspace/installer-output"
+grep -Fq '游戏服务仅监听 127.0.0.1:18080' "$workspace/installer-output"
+if grep -Eq 'naming to docker|Container |\#[0-9]+ \[' "$workspace/installer-output"; then
+  printf '安装过程不应显示容器引擎的英文构建输出。\n' >&2
+  exit 1
+fi
 test "$(cat "$workspace/private/deploy-mode")" = tunnel
 tunnel=(docker compose -p "$project" -f "$workspace/compose.yaml" -f "$workspace/compose.tunnel.yaml" --env-file "$workspace/private/compose.env")
 test "$("${tunnel[@]}" port app 8080)" = '127.0.0.1:18080'
