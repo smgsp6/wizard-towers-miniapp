@@ -20,6 +20,13 @@
 <section id="room" hidden>
   <a class="back" href="#">‹ 返回大厅</a>
   <header class="room-head"><h1>五子棋</h1><p>任一方向率先连成至少五子即获胜。</p></header>
+  <details id="management" class="management" hidden>
+    <summary>管理员工具</summary>
+    <form id="authorize"><label for="friend-id">Telegram 数字 ID</label><div><input id="friend-id" inputmode="numeric" maxlength="16" required><button type="submit">授权好友</button></div></form>
+    <label for="opponent">当前对手</label>
+    <select id="opponent"><option value="">选择已授权好友</option></select>
+    <div class="controls"><button id="toggle-ai" type="button" hidden></button><button id="revoke" type="button" hidden>移除授权</button></div>
+  </details>
   <div class="arena">
     <div class="seats"><span><i class="black"></i>黑方</span><span><i class="white"></i>白方</span></div>
     <div id="board" role="group" aria-label="十五路五子棋棋盘"></div>
