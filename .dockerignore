@@ -3,6 +3,8 @@
 !admin-panel.html
 !checkers-admin.html
 !checkers-room.mjs
+!estate-room.mjs
+!estate-admin.html
 !room-store.mjs
 !gomoku-ai.mjs
 !public/

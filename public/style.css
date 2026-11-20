@@ -73,3 +73,6 @@ nav{display:flex;gap:24px;color:#536181;font-weight:650}nav a{padding:16px 0;bor
 .estate-mapbar{align-items:center}.estate-mapbar button{min-height:36px;padding:0 8px;border-radius:7px;background:#fffdf7;border:1px solid #e7ded0;color:#694d39;font-size:12px}
 .estate-tile[data-district="6"]{--district:#9b765b}.estate-tile[data-district="7"]{--district:#986b77}.estate-tile[data-district="8"]{--district:#987b57}.estate-tile[data-district="9"]{--district:#618ba3}
 #estate-viewport.overview #estate-board{min-width:0}.overview .estate-tile small,.overview .estate-tile-badge,.overview .estate-model{display:none}.overview .estate-tile{font-size:9px}
+.estate-turn .estate-dice{box-sizing:border-box;display:grid;flex:0 0 39px;width:39px;height:39px;grid-template:repeat(3,1fr)/repeat(3,1fr);gap:1px;place-items:center;background:#f6e5c0;border:1px solid #ffeccd;border-bottom:4px solid #c7a777;border-radius:8px;padding:5px;box-shadow:0 3px 5px #1e120d88}
+.estate-dice i{width:5px;height:5px;border-radius:50%;background:#473229;visibility:hidden}
+.estate-dice i[data-on="true"]{visibility:visible}

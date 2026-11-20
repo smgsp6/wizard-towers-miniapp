@@ -3,7 +3,7 @@ import { mountMusic } from './music.mjs';
 import { mountCheckers } from './checkers.mjs';
 const telegram = window.Telegram?.WebApp;
 const showCheckers = mountCheckers(telegram);
-const showEstate = mountEstate();
+const showEstate = mountEstate(telegram);
 mountMusic();
 const lobby = document.querySelector('#lobby');
 const category = document.querySelector('#chess-category');

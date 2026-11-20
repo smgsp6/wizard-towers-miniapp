@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roomStore } from './room-store.mjs';
 import { checkersRoom } from './checkers-room.mjs';
+import { estateRoom } from './estate-room.mjs';
 import { chooseMove, findVCF, hasFive, size } from './gomoku-ai.mjs';
 export { hasFive } from './gomoku-ai.mjs';
 
@@ -162,9 +163,10 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     }
     const practice = req.url === '/api/practice';
     const checkers = req.url === '/api/checkers';
-    const panels = { '/api/admin-panel': 'admin-panel.html', '/api/checkers-admin': 'checkers-admin.html' };
+    const estate = req.url === '/api/estate';
+    const panels = { '/api/admin-panel': 'admin-panel.html', '/api/checkers-admin': 'checkers-admin.html', '/api/estate-admin': 'estate-admin.html' };
     const panel = req.method === 'GET' && Object.hasOwn(panels, req.url) ? panels[req.url] : null;
-    if ((!panel && !practice && !checkers && req.url !== '/api/room') || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
+    if ((!panel && !practice && !checkers && !estate && req.url !== '/api/room') || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
     if (!token || !validID(owner)) return send(503, { error: 'Telegram 对局服务尚未配置' });
     const id = telegramID(req.headers['x-telegram-init-data'], token);
     if (!id) return send(401, { error: '请从 Telegram 小程序重新打开大厅' });
@@ -189,6 +191,7 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     const saved = store.state;
     if (!admin && !saved.allowed.includes(id)) return send(403, { error: '你的账号尚未获得对局授权' });
     if (checkers) return send(...checkersRoom(store, id, owner, action));
+    if (estate) return send(...estateRoom(store, id, owner, action));
     const state = action ? structuredClone(saved) : saved;
     if (practice) {
       const existing = state.practice?.[id];
@@ -220,6 +223,8 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
         delete state.rooms[target];
         if (state.practice) delete state.practice[target];
         if (state.checkers) delete state.checkers[target];
+        if (state.estate) delete state.estate[target];
+        if (state.estateOpponent === target) state.estateOpponent = null;
         if (state.checkersOpponent === target) state.checkersOpponent = null;
         if (state.selected === target) state.selected = null;
       }

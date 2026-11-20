@@ -27,14 +27,25 @@
 <section id="tabletop-category" class="directory" hidden>
   <a class="back" href="#">‹ 返回游戏大厅</a>
   <h1>桌游</h1>
+  <a class="game" href="#estate-menu"><span class="category-icon" aria-hidden="true">⬡</span>
+    <span><strong>街区大亨</strong><small>原创地产桌游 · 40 格街区地图</small></span><b aria-hidden="true">›</b>
+  </a>
+</section>
+<section id="estate-menu-page" class="directory" hidden>
+  <a class="back" href="#board-games">‹ 返回桌游</a>
+  <h1>街区大亨</h1>
   <a class="game" href="#estate"><span class="category-icon" aria-hidden="true">⬡</span>
-    <span><strong>街区大亨</strong><small>原创地产桌游 · 双人同屏</small></span><b aria-hidden="true">›</b>
+    <span><strong>双人同屏</strong><small>在这台设备上轮流玩</small></span><b aria-hidden="true">›</b>
+  </a>
+  <a class="game" href="#estate-online"><span class="category-icon" aria-hidden="true">⬡</span>
+    <span><strong>好友对局</strong><small>和已获授权的 Telegram 好友一起玩</small></span><b aria-hidden="true">›</b>
   </a>
 </section>
 <section id="estate-page" class="directory" hidden>
-  <a class="back" href="#board-games">‹ 返回桌游</a>
+  <a class="back" href="#estate-menu">‹ 返回街区大亨</a>
+  <div id="estate-admin"></div>
   <div class="estate-shell">
-    <header class="estate-header"><h1>街区大亨</h1><span>双人同屏</span></header>
+    <header class="estate-header"><h1>街区大亨</h1><span id="estate-mode">双人同屏</span></header>
     <div class="estate-players" aria-label="玩家资产">
       <div class="estate-player" data-estate-player="0"><i aria-hidden="true"></i><span>橙方 <small></small></span><strong></strong></div>
       <div class="estate-player" data-estate-player="1"><i aria-hidden="true"></i><span>紫方 <small></small></span><strong></strong></div>
@@ -45,8 +56,9 @@
     </div>
     <div id="estate-deed" class="estate-deed"><div><strong></strong><small></small></div><b></b></div>
     <div class="estate-operation">
-      <div class="estate-turn"><span id="estate-dice" aria-hidden="true"></span><div><strong id="estate-turn"></strong><p id="estate-status" role="status"></p></div></div>
+      <div class="estate-turn"><span id="estate-dice" class="estate-dice" aria-hidden="true"></span><div><strong id="estate-turn"></strong><p id="estate-status" role="status"></p></div></div>
       <div class="estate-controls">
+        <button id="estate-join" class="estate-primary" type="button" hidden>入席</button>
         <button class="estate-primary" data-estate-action="roll">掷骰</button>
         <button class="estate-primary" data-estate-action="buy">购买地契</button>
         <button class="estate-primary" data-estate-action="upgrade">升级地产</button>

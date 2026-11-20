@@ -163,9 +163,10 @@ export function estateAction(state, action, die = 0, target = null) {
   return next;
 }
 
-export function mountEstate() {
+export function mountEstate(telegram) {
   const view = document.querySelector('#estate-page');
   const menu = document.querySelector('#tabletop-category');
+  const modeMenu = document.querySelector('#estate-menu-page');
   const board = document.querySelector('#estate-board');
   const viewport = document.querySelector('#estate-viewport');
   const overview = document.querySelector('#estate-overview');
@@ -174,6 +175,19 @@ export function mountEstate() {
   const deed = document.querySelector('#estate-deed');
   const turn = document.querySelector('#estate-turn');
   const dice = document.querySelector('#estate-dice');
+  const modeLabel = document.querySelector('#estate-mode');
+  const adminRoot = document.querySelector('#estate-admin');
+  const join = document.querySelector('#estate-join');
+  const pips = Array.from({ length: 9 }, () => dice.appendChild(document.createElement('i')));
+  const faces = [[], [4], [0,8], [0,4,8], [0,2,6,8], [0,2,4,6,8], [0,2,3,5,6,8]];
+  let mode = '';
+  let remote = null;
+  let admin = null;
+  let busy = false;
+  let rolling = false;
+  let visibleEpoch = 0;
+  let error = '';
+  let local = initialEstate();
   const players = [...document.querySelectorAll('[data-estate-player]')];
   const controls = [...document.querySelectorAll('[data-estate-action]')];
   const edge = blocks.length / 4;
@@ -182,7 +196,7 @@ export function mountEstate() {
     return [[edge-offset,edge],[0,edge-offset],[offset,0],[edge,offset]][Math.floor(index / edge)];
   });
   const marks = { start: '↻', gift: '+', fee: '−', event: '✦', jail: '▣', detain: '!', airport: '✈' };
-  let game = initialEstate();
+  let game = local;
   let focused = 0;
   const tiles = blocks.map(([name, type, rent], index) => {
     const tile = document.createElement('button');
@@ -235,6 +249,24 @@ export function mountEstate() {
     if (!enabled) follow(focused, false);
   };
   function render() {
+    const online = mode === 'online';
+    const ready = !online || Boolean(remote?.joined);
+    const canPlay = ready && (!online || remote.side === game.turn) && !busy && !rolling;
+    join.hidden = !online || !remote || remote.joined || Boolean(remote.management);
+    join.disabled = busy;
+    if (admin && remote?.management) {
+      const { allowed, opponent, nextDie } = remote.management;
+      const values = allowed.join(',');
+      if (admin.select.dataset.ids !== values) {
+        admin.select.dataset.ids = values;
+        admin.select.replaceChildren(new Option('选择已授权好友', ''), ...allowed.map(id => new Option(id, id)));
+      }
+      admin.select.value = opponent ?? '';
+      admin.select.disabled = busy || rolling;
+      admin.form.hidden = !remote.joined;
+      admin.form.querySelectorAll('input,button').forEach(element => { element.disabled = busy || rolling; });
+      admin.status.textContent = nextDie === null ? '下一次随机掷骰' : `已设置下一次掷出 ${nextDie} 点`;
+    }
     for (const [index, { tile, tokens, price, name, type, rent, model }] of tiles.entries()) {
       tile.dataset.owner = game.owners[index] ?? '';
       tile.dataset.floors = game.levels[index];
@@ -258,8 +290,13 @@ export function mountEstate() {
     deed.querySelector('b').textContent = rent ? owner === null ? `¥${type}` : `租 ¥${rentAt(game,focused)}` : '';
     turn.textContent = game.phase === 'finished' ? game.winner === 2 ? '平局' : `${names[game.winner]}获胜`
       : `${names[game.turn]}行动 · 第 ${game.rounds + 1} / 40 回合`;
-    dice.textContent = game.die ? ['','⚀','⚁','⚂','⚃','⚄','⚅'][game.die] : '⚄';
-    notice.textContent = game.phase === 'detention' ? `缴费 ¥${detentionFee} 后可掷骰，或停一回合免费离开。` : game.notice;
+    if (!rolling) pips.forEach((pip, i) => { pip.dataset.on = String(faces[game.die ?? 5].includes(i)); });
+    const message = error || (rolling ? '骰子翻滚中…'
+      : online && !remote ? '正在连接好友对局…'
+      : !ready ? remote.management ? '选择好友后等待入席' : '请入席开始对局'
+      : online && game.turn !== remote.side && game.phase !== 'finished' ? game.notice + ' 等待对方操作。'
+      : game.phase === 'detention' ? `缴费 ¥${detentionFee} 后可掷骰，或停一回合免费离开。` : game.notice);
+    if (notice.textContent !== message) notice.textContent = message;
     for (const button of controls) {
       const action = button.dataset.estateAction;
       if (action === 'upgrade' && game.phase === 'upgrade') button.textContent = `盖第 ${game.levels[game.players[game.turn].at] + 1} 层 · ¥${upgradeCost(game.players[game.turn].at)}`;
@@ -278,12 +315,129 @@ export function mountEstate() {
       button.disabled = ['boost','shield'].includes(action) && Boolean(game.players[game.turn][action]);
       if (action === 'release') button.disabled = game.players[game.turn].cash < detentionFee;
       if (action === 'audit') button.disabled = game.players[game.turn].audit || game.players[1-game.turn].boost !== 1;
+      if (action === 'restart') button.hidden = online && !remote?.management;
+      else if (!ready) button.hidden = true;
+      button.disabled ||= action === 'restart' ? busy || rolling || !ready : !canPlay;
     }
   }
-  for (const button of controls) button.onclick = () => {
+  async function animateRoll() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof dice.animate !== 'function') return;
+    rolling = true;
+    render();
+    try {
+      await dice.animate([
+        { transform: 'perspective(110px) rotateZ(0) rotateX(0)' },
+        { transform: 'perspective(110px) translateY(-8px) rotateZ(92deg) rotateX(145deg)', offset: .45 },
+        { transform: 'perspective(110px) rotateZ(185deg) rotateX(265deg)', offset: .78 },
+        { transform: 'perspective(110px) rotateZ(360deg) rotateX(360deg)' },
+      ], { duration: 480, easing: 'ease-in-out' }).finished;
+    } finally {
+      rolling = false;
+    }
+  }
+
+  function attachAdmin(markup) {
+    const template = document.createElement('template');
+    template.innerHTML = markup;
+    adminRoot.replaceChildren(template.content);
+    const find = selector => adminRoot.querySelector(selector);
+    admin = {
+      select: find('#estate-opponent'), form: find('#estate-die-form'),
+      input: find('#estate-next-die'), status: find('#estate-die-status'),
+    };
+    admin.select.onchange = () => {
+      if (admin.select.value) request({ type: 'select', id: admin.select.value });
+    };
+    admin.form.onsubmit = event => {
+      event.preventDefault();
+      request({ type: 'set-die', value: admin.input.valueAsNumber });
+    };
+    find('#estate-clear-die').onclick = () => request({ type: 'set-die', value: null });
+  }
+
+  function detachAdmin() {
+    adminRoot.replaceChildren();
+    admin = null;
+  }
+
+  async function request(action) {
+    if (busy || rolling || mode !== 'online') return;
+    if (!telegram?.initData) {
+      error = '请从 Telegram 小程序打开好友对局';
+      render();
+      return;
+    }
+    const epoch = visibleEpoch;
+    const actor = game.turn;
+    const headers = { 'X-Telegram-Init-Data': telegram.initData };
+    busy = true;
+    error = '';
+    if (action) render();
+    try {
+      const response = await fetch('/api/estate', {
+        method: action ? 'POST' : 'GET', headers,
+        body: action ? JSON.stringify({ ...action, opponent: remote?.management?.opponent, revision: remote?.revision }) : undefined,
+        signal: AbortSignal.timeout(8000),
+      });
+      const state = await response.json();
+      if (epoch !== visibleEpoch) return;
+      if (!response.ok) {
+        if (response.status !== 409) {
+          remote = null;
+          game = initialEstate();
+          detachAdmin();
+        }
+        error = state.error;
+        return;
+      }
+      if (state.management && !admin) {
+        const panel = await fetch('/api/estate-admin', { headers, signal: AbortSignal.timeout(8000) });
+        if (!panel.ok) throw new Error();
+        const markup = await panel.text();
+        if (epoch !== visibleEpoch) return;
+        attachAdmin(markup);
+      }
+      if (!state.management) detachAdmin();
+      const differentRoom = remote?.management?.opponent !== state.management?.opponent || remote?.joined !== state.joined;
+      remote = state;
+      game = state.game;
+      if (differentRoom || ['roll','fly'].includes(action?.type)) {
+        focused = game.players[differentRoom ? game.turn : actor].at;
+        follow(focused, !differentRoom);
+      }
+    } catch {
+      if (epoch === visibleEpoch) {
+        error = '连接中断，正在等待重连。';
+        remote = null;
+        game = initialEstate();
+        detachAdmin();
+      }
+    } finally {
+      busy = false;
+      if (epoch === visibleEpoch) render();
+      else if (mode === 'online') request();
+    }
+  }
+
+  join.onclick = () => request({ type: 'join' });
+  for (const button of controls) button.onclick = async () => {
     const action = button.dataset.estateAction;
+    if (rolling || busy) return;
+    if (action === 'restart' && (game.rounds || game.die) && game.phase !== 'finished' &&
+        !window.confirm('重新开始当前桌游？')) return;
+    if (action === 'roll') {
+      const epoch = visibleEpoch;
+      await animateRoll().catch(() => {});
+      if (epoch !== visibleEpoch) {
+        render();
+        return;
+      }
+    }
+    if (mode === 'online') {
+      request({ type: action === 'restart' ? 'reset' : action, ...(action === 'sell' && { target: focused }) });
+      return;
+    }
     if (action === 'restart') {
-      if ((game.rounds || game.die) && game.phase !== 'finished' && !window.confirm('重新开始当前桌游？')) return;
       game = initialEstate();
       focused = 0;
       follow(0, false);
@@ -295,16 +449,34 @@ export function mountEstate() {
         follow(focused);
       }
     }
+    local = game;
     render();
   };
+  setInterval(() => {
+    if (mode === 'online' && !document.hidden) request();
+  }, 1800);
   render();
   return hash => {
     menu.hidden = hash !== '#board-games';
-    view.hidden = hash !== '#estate';
+    modeMenu.hidden = hash !== '#estate-menu';
+    const next = hash === '#estate' ? 'local' : hash === '#estate-online' ? 'online' : '';
+    view.hidden = !next;
+    if (mode !== next) {
+      visibleEpoch++;
+      mode = next;
+      error = '';
+      remote = null;
+      game = mode === 'local' ? local : initialEstate();
+      focused = 0;
+      detachAdmin();
+      modeLabel.textContent = mode === 'online' ? '好友对局' : '双人同屏';
+      if (mode === 'online') request();
+      render();
+    }
     if (!view.hidden && !opened) {
       opened = true;
       requestAnimationFrame(() => follow(0, false));
     }
-    return !menu.hidden || !view.hidden;
+    return !menu.hidden || !view.hidden || !modeMenu.hidden;
   };
 }

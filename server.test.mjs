@@ -235,3 +235,42 @@ test('a verified opposing VCF pauses AI and is visible to the owner only', async
   assert.equal(owner.management.analysis.line.length, 2);
   assert.equal((await call(202)).management, undefined);
 });
+
+test('estate dice settings are owner-only, isolated, and consumed by one owner roll', async t => {
+  const server = makeServer({ token, owner: '101', allowed: ['202', '303'] }).listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await once(server, 'listening');
+  const address = `http://127.0.0.1:${server.address().port}`;
+  async function send(id, body, path = 'estate') {
+    const res = await fetch(address + '/api/' + path, {
+      method: body ? 'POST' : 'GET',
+      headers: id ? { 'X-Telegram-Init-Data': signed(id) } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return [res.status, path === 'estate' ? await res.json() : await res.text()];
+  }
+  assert.equal((await send(null, null, 'estate-admin'))[0], 401);
+  assert.equal((await send(202, null, 'estate-admin'))[0], 403);
+  assert.match((await send(101, null, 'estate-admin'))[1], /设置点数/);
+  await send(101, { type: 'select', id: '202' });
+  const [, joined] = await send(202, { type: 'join' });
+  assert.equal(joined.side, 1);
+  assert.equal(joined.management, undefined);
+  assert.equal((await send(202, { type: 'set-die', value: 6 }))[0], 400);
+  assert.equal((await send(101, { type: 'set-die', value: 7, opponent: '202' }))[0], 400);
+  const [, staged] = await send(101, { type: 'set-die', value: 3, opponent: '202' });
+  assert.equal(staged.management.nextDie, 3);
+  assert.equal((await send(303))[1].joined, false);
+  const [, visible] = await send(202);
+  assert.equal(visible.management, undefined);
+  assert.equal(visible.game.die, null);
+  assert.equal((await send(202, { type: 'roll', revision: joined.revision }))[0], 409);
+  const [, rolled] = await send(101, { type: 'roll', opponent: '202', revision: joined.revision, value: 6 });
+  assert.equal(rolled.game.die, 3);
+  assert.equal(rolled.game.players[0].at, 3);
+  assert.equal(rolled.management.nextDie, null);
+  assert.equal((await send(101, { type: 'roll', opponent: '202', revision: joined.revision }))[0], 409);
+  const [, guest] = await send(202);
+  assert.deepEqual(guest.game, rolled.game);
+  assert(!Object.hasOwn(guest, 'management'));
+});

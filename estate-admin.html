@@ -1,0 +1,12 @@
+<details class="management">
+  <summary>管理员工具</summary>
+  <label for="estate-opponent">当前对手</label>
+  <select id="estate-opponent"><option value="">选择已授权好友</option></select>
+  <form id="estate-die-form" hidden>
+    <label for="estate-next-die">我的下一次掷骰</label>
+    <div><input id="estate-next-die" type="number" min="1" max="6" step="1" required inputmode="numeric">
+      <button type="submit">设置点数</button><button id="estate-clear-die" type="button">恢复随机</button>
+    </div>
+    <p id="estate-die-status" role="status"></p>
+  </form>
+</details>
