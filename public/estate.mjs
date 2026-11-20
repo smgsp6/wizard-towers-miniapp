@@ -175,6 +175,7 @@ export function mountEstate(telegram) {
   const deed = document.querySelector('#estate-deed');
   const turn = document.querySelector('#estate-turn');
   const dice = document.querySelector('#estate-dice');
+  const diceResult = document.querySelector('#estate-dice-result');
   const modeLabel = document.querySelector('#estate-mode');
   const adminRoot = document.querySelector('#estate-admin');
   const join = document.querySelector('#estate-join');
@@ -191,7 +192,7 @@ export function mountEstate(telegram) {
       dot.hidden = !dots.includes(pip);
     }
   }
-  const pose = (x,y,lift = 0) => `translateY(${lift}px) rotateX(-19deg) rotateY(-23deg) rotateX(${x}deg) rotateY(${y}deg)`;
+  const pose = (x,y,lift = 0) => `translateY(${lift}px) rotateX(-41deg) rotateY(-24deg) rotateX(90deg) rotateX(${x}deg) rotateY(${y}deg)`;
   let mode = '';
   let remote = null;
   let admin = null;
@@ -303,6 +304,7 @@ export function mountEstate(telegram) {
     deed.querySelector('b').textContent = rent ? owner === null ? `¥${type}` : `租 ¥${rentAt(game,focused)}` : '';
     turn.textContent = game.phase === 'finished' ? game.winner === 2 ? '平局' : `${names[game.winner]}获胜`
       : `${names[game.turn]}行动 · 第 ${game.rounds + 1} / 40 回合`;
+    diceResult.textContent = rolling ? '掷骰中' : game.die ? `掷出 ${game.die} 点` : '尚未掷骰';
     if (!rolling) {
       shown = game.die ?? 5;
       cube.style.transform = pose(...angles[shown - 1]);
