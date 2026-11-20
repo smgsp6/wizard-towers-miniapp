@@ -73,6 +73,14 @@ nav{display:flex;gap:24px;color:#536181;font-weight:650}nav a{padding:16px 0;bor
 .estate-mapbar{align-items:center}.estate-mapbar button{min-height:36px;padding:0 8px;border-radius:7px;background:#fffdf7;border:1px solid #e7ded0;color:#694d39;font-size:12px}
 .estate-tile[data-district="6"]{--district:#9b765b}.estate-tile[data-district="7"]{--district:#986b77}.estate-tile[data-district="8"]{--district:#987b57}.estate-tile[data-district="9"]{--district:#618ba3}
 #estate-viewport.overview #estate-board{min-width:0}.overview .estate-tile small,.overview .estate-tile-badge,.overview .estate-model{display:none}.overview .estate-tile{font-size:9px}
-.estate-turn .estate-dice{box-sizing:border-box;display:grid;flex:0 0 39px;width:39px;height:39px;grid-template:repeat(3,1fr)/repeat(3,1fr);gap:1px;place-items:center;background:#f6e5c0;border:1px solid #ffeccd;border-bottom:4px solid #c7a777;border-radius:8px;padding:5px;box-shadow:0 3px 5px #1e120d88}
-.estate-dice i{width:5px;height:5px;border-radius:50%;background:#473229;visibility:hidden}
-.estate-dice i[data-on="true"]{visibility:visible}
+.estate-turn .estate-dice{display:grid;place-items:center;flex:0 0 53px;height:53px;perspective:140px}
+.estate-dice-cube{--half:18px;position:relative;width:calc(2*var(--half));height:calc(2*var(--half));transform-style:preserve-3d;display:block}
+.estate-dice-face{position:absolute;inset:0;box-sizing:border-box;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);align-items:center;justify-items:center;gap:1px;padding:5px;border:1px solid #bda57c;border-radius:1px;background:linear-gradient(145deg,#fff1d5,#e7cc99);backface-visibility:hidden}
+.estate-dice-face[data-face="1"]{transform:translateZ(var(--half))}
+.estate-dice-face[data-face="2"]{transform:rotateY(90deg) translateZ(var(--half))}
+.estate-dice-face[data-face="3"]{transform:rotateX(90deg) translateZ(var(--half))}
+.estate-dice-face[data-face="4"]{transform:rotateX(-90deg) translateZ(var(--half))}
+.estate-dice-face[data-face="5"]{transform:rotateY(-90deg) translateZ(var(--half))}
+.estate-dice-face[data-face="6"]{transform:rotateY(180deg) translateZ(var(--half))}
+.estate-dice-face i{width:5px;height:5px;border-radius:50%;background:#4a3529;box-shadow:inset 0 1px 0 #281b12}
+.estate-dice-face i[hidden]{display:block!important;visibility:hidden}

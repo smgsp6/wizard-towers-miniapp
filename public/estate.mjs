@@ -178,13 +178,26 @@ export function mountEstate(telegram) {
   const modeLabel = document.querySelector('#estate-mode');
   const adminRoot = document.querySelector('#estate-admin');
   const join = document.querySelector('#estate-join');
-  const pips = Array.from({ length: 9 }, () => dice.appendChild(document.createElement('i')));
-  const faces = [[], [4], [0,8], [0,4,8], [0,2,6,8], [0,2,4,6,8], [0,2,3,5,6,8]];
+  const cube = dice.appendChild(document.createElement('span'));
+  cube.className = 'estate-dice-cube';
+  const faces = [[4], [0,8], [0,4,8], [0,2,6,8], [0,2,4,6,8], [0,2,3,5,6,8]];
+  const angles = [[0,0], [0,-90], [-90,0], [90,0], [0,90], [0,180]];
+  for (const [index, dots] of faces.entries()) {
+    const face = cube.appendChild(document.createElement('span'));
+    face.className = 'estate-dice-face';
+    face.dataset.face = index + 1;
+    for (let pip = 0; pip < 9; pip++) {
+      const dot = face.appendChild(document.createElement('i'));
+      dot.hidden = !dots.includes(pip);
+    }
+  }
+  const pose = (x,y,lift = 0) => `translateY(${lift}px) rotateX(-19deg) rotateY(-23deg) rotateX(${x}deg) rotateY(${y}deg)`;
   let mode = '';
   let remote = null;
   let admin = null;
   let busy = false;
   let rolling = false;
+  let shown = 5;
   let visibleEpoch = 0;
   let error = '';
   let local = initialEstate();
@@ -290,7 +303,11 @@ export function mountEstate(telegram) {
     deed.querySelector('b').textContent = rent ? owner === null ? `¥${type}` : `租 ¥${rentAt(game,focused)}` : '';
     turn.textContent = game.phase === 'finished' ? game.winner === 2 ? '平局' : `${names[game.winner]}获胜`
       : `${names[game.turn]}行动 · 第 ${game.rounds + 1} / 40 回合`;
-    if (!rolling) pips.forEach((pip, i) => { pip.dataset.on = String(faces[game.die ?? 5].includes(i)); });
+    if (!rolling) {
+      shown = game.die ?? 5;
+      cube.style.transform = pose(...angles[shown - 1]);
+      dice.dataset.result = game.die ?? '';
+    }
     const message = error || (rolling ? '骰子翻滚中…'
       : online && !remote ? '正在连接好友对局…'
       : !ready ? remote.management ? '选择好友后等待入席' : '请入席开始对局'
@@ -320,17 +337,20 @@ export function mountEstate(telegram) {
       button.disabled ||= action === 'restart' ? busy || rolling || !ready : !canPlay;
     }
   }
-  async function animateRoll() {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof dice.animate !== 'function') return;
+  async function animateRoll(value) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof cube.animate !== 'function') return;
+    const [x,y] = angles[shown - 1];
+    const [endX,endY] = angles[value - 1];
     rolling = true;
     render();
     try {
-      await dice.animate([
-        { transform: 'perspective(110px) rotateZ(0) rotateX(0)' },
-        { transform: 'perspective(110px) translateY(-8px) rotateZ(92deg) rotateX(145deg)', offset: .45 },
-        { transform: 'perspective(110px) rotateZ(185deg) rotateX(265deg)', offset: .78 },
-        { transform: 'perspective(110px) rotateZ(360deg) rotateX(360deg)' },
-      ], { duration: 480, easing: 'ease-in-out' }).finished;
+      await cube.animate([
+        { transform: pose(x,y) },
+        { transform: pose(x+220,y+125,-9), offset: .48 },
+        { transform: pose(endX+360,endY+360) },
+      ], { duration: 480, easing: 'cubic-bezier(.3,.1,.3,1)' }).finished;
+    } catch {
+      // The roll result is still valid if the browser cancels the animation.
     } finally {
       rolling = false;
     }
@@ -399,6 +419,10 @@ export function mountEstate(telegram) {
       }
       if (!state.management) detachAdmin();
       const differentRoom = remote?.management?.opponent !== state.management?.opponent || remote?.joined !== state.joined;
+      if (action?.type === 'roll') {
+        await animateRoll(state.game.die);
+        if (epoch !== visibleEpoch) return;
+      }
       remote = state;
       game = state.game;
       if (differentRoom || ['roll','fly'].includes(action?.type)) {
@@ -425,17 +449,18 @@ export function mountEstate(telegram) {
     if (rolling || busy) return;
     if (action === 'restart' && (game.rounds || game.die) && game.phase !== 'finished' &&
         !window.confirm('重新开始当前桌游？')) return;
-    if (action === 'roll') {
+    if (mode === 'online') {
+      request({ type: action === 'restart' ? 'reset' : action, ...(action === 'sell' && { target: focused }) });
+      return;
+    }
+    const value = action === 'roll' ? Math.floor(Math.random()*6) + 1 : 0;
+    if (value) {
       const epoch = visibleEpoch;
-      await animateRoll().catch(() => {});
+      await animateRoll(value);
       if (epoch !== visibleEpoch) {
         render();
         return;
       }
-    }
-    if (mode === 'online') {
-      request({ type: action === 'restart' ? 'reset' : action, ...(action === 'sell' && { target: focused }) });
-      return;
     }
     if (action === 'restart') {
       game = initialEstate();
@@ -443,7 +468,7 @@ export function mountEstate(telegram) {
       follow(0, false);
     } else {
       const actor = game.turn;
-      game = estateAction(game, action, action === 'roll' ? Math.floor(Math.random()*6) + 1 : 0, focused);
+      game = estateAction(game, action, value, focused);
       if (action === 'roll' || action === 'fly') {
         focused = game.players[actor].at;
         follow(focused);
