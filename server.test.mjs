@@ -68,6 +68,23 @@ test('only the owner and the seated authorized guest can play', async t => {
   assert.equal((await call(null))[0], 401);
   assert.equal((await call(404))[0], 403);
   assert.equal((await move(101,0,0))[0], 409);
+  const fetchCheckers = async (id, body, path = 'checkers') => {
+    const reply = await fetch(address + '/api/' + path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'X-Telegram-Init-Data': signed(id) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return [reply.status, await reply.text()];
+  };
+  assert.equal((await fetchCheckers(202, null, 'checkers-admin'))[0], 403);
+  assert.match((await fetchCheckers(101, null, 'checkers-admin'))[1], /计算推荐路线/);
+  assert.equal((await fetchCheckers(101, { type: 'select', id: '202' }))[0], 200);
+  assert.equal((await fetchCheckers(202, { type: 'join' }))[0], 200);
+  assert.equal((await fetchCheckers(202, { type: 'hint' }))[0], 400);
+  const [, hintBody] = await fetchCheckers(101, { type: 'hint', opponent: '202' });
+  assert(JSON.parse(hintBody).management.hint.length >= 2);
+  assert.equal(JSON.parse((await fetchCheckers(202))[1]).management, undefined);
+  assert.equal(JSON.parse((await fetchCheckers(303))[1]).joined, false);
   assert.equal((await call(101,{type:'select',id:'202'}))[0], 200);
   assert.equal((await call(202,{type:'join'}))[1].side, 2);
   assert.equal((await call(303,{type:'join'}))[1].side, 2);

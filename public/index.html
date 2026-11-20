@@ -10,15 +10,86 @@
 <script src="/app.js" type="module"></script>
 </head>
 <body>
-<header class="top"><div class="shell top-inner"><a class="brand" href="#" aria-label="游戏大厅首页"><span>◈</span> 游戏大厅</a><span class="platform">Telegram Mini App</span></div></header>
+<header class="top"><div class="shell top-inner"><a class="brand" href="#" aria-label="游戏大厅首页"><span>◈</span> 游戏大厅</a><button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="false">开启音乐</button></div></header>
 <main class="shell">
 <section id="lobby">
   <nav aria-label="游戏分类"><a href="#" aria-current="page">首页</a><a href="#games">棋类游戏</a></nav>
-  <div class="hero"><div class="hero-copy"><span>首发游戏</span><h1>五子棋</h1><p>黑白交锋，五子成线。<br>和获授权的好友下一局。</p><a class="primary" href="#gomoku">进入五子棋 <b aria-hidden="true">→</b></a></div></div>
-  <section id="games"><h2>棋类游戏</h2><a class="game" href="#gomoku"><span class="game-icon" aria-hidden="true"></span><span><strong>五子棋</strong><small>好友对弈 · 15 × 15 棋盘</small></span><b aria-hidden="true">›</b></a><a class="game" href="#practice"><span class="game-icon" aria-hidden="true"></span><span><strong>人机练习</strong><small>自选黑白 · 对战五子棋 AI</small></span><b aria-hidden="true">›</b></a></section>
+  <div class="hero"><div class="hero-copy"><span>首发游戏</span><h1>五子棋</h1><p>黑白交锋，五子成线。<br>和获授权的好友下一局。</p><a class="primary" href="#games">浏览棋类游戏 <b aria-hidden="true">→</b></a></div></div>
+  <section class="directory"><h2>游戏分类</h2>
+    <a class="game" href="#games"><span class="category-icon" aria-hidden="true">◈</span>
+      <span><strong>棋类游戏</strong><small>五子棋 · 跳棋</small></span><b aria-hidden="true">›</b>
+    </a>
+    <a class="game" href="#board-games"><span class="category-icon" aria-hidden="true">⬡</span>
+      <span><strong>桌游</strong><small>街区大亨</small></span><b aria-hidden="true">›</b>
+    </a>
+  </section>
+</section>
+<section id="board-games" class="directory" hidden>
+  <a class="back" href="#">‹ 返回游戏大厅</a>
+  <h1>桌游</h1>
+  <a class="game" href="#estate"><span class="category-icon" aria-hidden="true">⬡</span>
+    <span><strong>街区大亨</strong><small>原创地产桌游 · 双人同屏</small></span><b aria-hidden="true">›</b>
+  </a>
+</section>
+<section id="estate" class="directory" hidden>
+  <a class="back" href="#board-games">‹ 返回桌游</a>
+  <h1>街区大亨</h1>
+  <p>掷骰、买地、收租。对手破产即获胜，40 回合后比较总资产。</p>
+  <div class="arena">
+    <div id="estate-board"><div id="estate-players"></div></div>
+    <p id="estate-status" role="status"></p>
+    <div class="controls estate-controls">
+      <button class="primary" data-estate-action="roll">掷骰</button>
+      <button data-estate-action="buy">买地</button><button data-estate-action="skip">跳过</button>
+      <button data-estate-action="boost">商圈推广</button><button data-estate-action="shield">租金护盾</button>
+      <button data-estate-action="restart">重新开始</button>
+    </div>
+  </div>
+</section>
+<section id="games" class="directory" hidden>
+  <a class="back" href="#">‹ 返回游戏大厅</a>
+  <h1>棋类游戏</h1>
+  <a class="game" href="#gomoku"><span class="game-icon" aria-hidden="true"></span>
+    <span><strong>五子棋</strong><small>15 × 15 棋盘</small></span><b aria-hidden="true">›</b>
+  </a>
+  <a class="game" href="#checkers"><span class="category-icon" aria-hidden="true">✦</span>
+    <span><strong>跳棋</strong><small>六角星棋盘</small></span><b aria-hidden="true">›</b>
+  </a>
+</section>
+<section id="checkers-menu" class="directory" hidden>
+  <a class="back" href="#games">‹ 返回棋类游戏</a>
+  <h1>跳棋</h1>
+  <p>先把十枚棋子全部移入对面的营地即可获胜。</p>
+  <a class="game" href="#checkers-room"><span class="category-icon" aria-hidden="true">✦</span>
+    <span><strong>好友对弈</strong><small>和已获授权的好友下跳棋</small></span><b aria-hidden="true">›</b>
+  </a>
+  <a class="game" href="#checkers-practice"><span class="category-icon" aria-hidden="true">✦</span>
+    <span><strong>人机对战</strong><small>挑战跳棋电脑</small></span><b aria-hidden="true">›</b>
+  </a>
+</section>
+<section id="checkers-play" class="directory" hidden>
+  <a class="back" href="#checkers">‹ 返回跳棋</a>
+  <h1 id="checkers-title">跳棋</h1>
+  <div id="checkers-admin"></div>
+  <div class="arena">
+    <div id="checkers-board" aria-label="跳棋棋盘"></div>
+    <p id="checkers-status" role="status"></p>
+    <div class="controls"><button id="checkers-join" type="button" hidden>入席</button><button id="checkers-restart" type="button" hidden>重新开始</button></div>
+  </div>
+</section>
+<section id="gomoku" class="directory" hidden>
+  <a class="back" href="#games">‹ 返回棋类游戏</a>
+  <div class="hero game-hero"><div class="hero-copy"><h1>五子棋</h1><p>黑白交锋，五子成线。</p></div></div>
+  <h2>选择玩法</h2>
+  <a class="game" href="#gomoku-room"><span class="mode-icon" aria-hidden="true"><i class="black"></i><i class="white"></i></span>
+    <span><strong>好友对弈</strong><small>和已获授权的好友下棋</small></span><b aria-hidden="true">›</b>
+  </a>
+  <a class="game" href="#practice"><span class="mode-icon" aria-hidden="true"><i class="black"></i></span>
+    <span><strong>人机练习</strong><small>自选黑白，挑战五子棋 AI</small></span><b aria-hidden="true">›</b>
+  </a>
 </section>
 <section id="room" hidden>
-  <a class="back" href="#">‹ 返回大厅</a>
+  <a class="back" href="#gomoku">‹ 返回五子棋</a>
   <header class="room-head"><h1 id="room-title">五子棋</h1><p>任一方向率先连成至少五子即获胜。</p></header>
   <div class="arena">
     <div class="seats"><span><i class="black"></i>黑方</span><span><i class="white"></i>白方</span></div>

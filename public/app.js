@@ -1,5 +1,13 @@
+import { mountEstate } from './estate.mjs';
+import { mountMusic } from './music.mjs';
+import { mountCheckers } from './checkers.mjs';
 const telegram = window.Telegram?.WebApp;
+const showCheckers = mountCheckers(telegram);
+const showEstate = mountEstate();
+mountMusic();
 const lobby = document.querySelector('#lobby');
+const category = document.querySelector('#games');
+const gameMenu = document.querySelector('#gomoku');
 const room = document.querySelector('#room');
 const board = document.querySelector('#board');
 const status = document.querySelector('#status');
@@ -232,13 +240,20 @@ for (const button of practiceButtons) button.onclick = () => {
 };
 join.onclick = () => request({ type: 'join' });
 function route() {
-  const nextPractice = location.hash === '#practice';
-  if (nextPractice !== practice || location.hash !== '#gomoku') removeAdmin();
-  if (nextPractice !== practice || location.hash !== '#gomoku') current = null;
+  const hash = location.hash;
+  const nextPractice = hash === '#practice';
+  const inRoom = nextPractice || hash === '#gomoku-room';
+  if (hash !== '#gomoku-room') removeAdmin();
+  if (nextPractice !== practice || !inRoom) current = null;
   practice = nextPractice;
   roomTitle.textContent = practice ? '人机练习' : '五子棋';
-  room.hidden = !practice && location.hash !== '#gomoku';
-  lobby.hidden = !room.hidden;
+  room.hidden = !inRoom;
+  category.hidden = hash !== '#games';
+  gameMenu.hidden = hash !== '#gomoku';
+  const checkersVisible = showCheckers(hash);
+  const estateVisible = showEstate(hash);
+  lobby.hidden = inRoom || !category.hidden || !gameMenu.hidden || checkersVisible || estateVisible;
+  window.scrollTo(0, 0);
   if (!room.hidden) {
     render();
     request();

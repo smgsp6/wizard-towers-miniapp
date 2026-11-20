@@ -1,6 +1,8 @@
 **
 !server.mjs
 !admin-panel.html
+!checkers-admin.html
+!checkers-room.mjs
 !room-store.mjs
 !gomoku-ai.mjs
 !public/
