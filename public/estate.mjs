@@ -3,14 +3,35 @@ export const blocks = [
   ['北岸花房',135,32], ['星桥剧院',150,36], ['日常开支','fee'], ['云窗画廊',165,41],
   ['咖啡小院',160,38], ['社区市集','gift'], ['石阶陶坊',180,47], ['滨河茶室',195,54],
   ['松庭酒店',210,60], ['旧城唱片店',175,45], ['日常开支','fee'], ['光影展馆',225,66],
+  ['银湾水族馆',230,70], ['河岸事件','event'], ['灯塔旅馆',205,58], ['渔港食堂',185,49],
+  ['市政事件','event'], ['月台旅店',240,72], ['银杏展馆',220,64], ['中央钟楼',250,78],
+  ['石桥市集','gift'], ['风车工坊',175,46], ['棉纺仓库',205,58], ['工会事件','event'],
+  ['青石影厅',220,65], ['茉莉药房',180,50], ['广场维护','fee'], ['剧场后台',235,69],
+  ['远望天台',260,81], ['塔顶书房',230,70], ['山间事件','event'], ['山麓温泉',250,78],
+  ['枫林补给','gift'], ['森林车站',240,74], ['月湖餐厅',265,84], ['湖心会馆',290,94],
 ];
-const initialPlayer = () => ({ cash: 650, at: 0, boost: 0, shield: 0 });
-export function initialEstate() {
-  return { players: [initialPlayer(), initialPlayer()], owners: Array(blocks.length).fill(null),
-    turn: 0, rounds: 0, phase: 'roll', winner: null, notice: '橙方先掷骰。' };
+const districts = ['晨光街','北岸街','滨河街','旧城街','银湾街','中央街','手作街','剧场街','望山街','月湖街'];
+const events = [['周末市集客流增加', 65], ['道路维护摊费', -35], ['商户联盟发放补贴', 85], ['景观整修筹资', -50]];
+const resalePrice = (state, index) => Math.floor((blocks[index][1] + state.levels[index] * upgradeCost(index)) * 0.65);
+const maxFloors = 3;
+const upgradeCost = index => Math.ceil(blocks[index][1] * 0.45);
+const names = ['橙方','紫方'];
+
+function rentAt(state, index) {
+  const rent = blocks[index][2];
+  if (!rent) return 0;
+  const owner = state.owners[index];
+  const district = Math.floor(index / 4);
+  const monopoly = owner !== null && blocks.every((block, i) => Math.floor(i / 4) !== district || !block[2] || state.owners[i] === owner);
+  return Math.ceil(rent * (100 + 60 * state.levels[index]) * (monopoly ? 125 : 100) / 10000);
 }
 
-const names = ['橙方','紫方'];
+const initialPlayer = () => ({ cash: 650, at: 0, boost: 0, shield: 0, audit: false });
+export function initialEstate() {
+  return { players: [initialPlayer(), initialPlayer()], owners: Array(blocks.length).fill(null),
+    levels: Array(blocks.length).fill(0), turn: 0, rounds: 0, eventDraw: 0, die: null, phase: 'roll', winner: null, notice: '掷骰开始，沿街区前进。' };
+}
+
 function endTurn(state) {
   state.rounds++;
   if (state.players[state.turn].cash < 0) {
@@ -18,7 +39,7 @@ function endTurn(state) {
     state.phase = 'finished';
   } else if (state.rounds >= 40) {
     const worth = state.players.map((player, side) => state.owners.reduce((sum, owner, index) =>
-      sum + (owner === side ? blocks[index][1] : 0), player.cash));
+      sum + (owner === side ? blocks[index][1] + state.levels[index] * upgradeCost(index) : 0), player.cash));
     state.winner = worth[0] === worth[1] ? 2 : worth[0] > worth[1] ? 0 : 1;
     state.phase = 'finished';
   } else {
@@ -27,7 +48,7 @@ function endTurn(state) {
   }
 }
 
-export function estateAction(state, action, die = 0) {
+export function estateAction(state, action, die = 0, target = null) {
   if (state.phase === 'finished') return state;
   const next = structuredClone(state);
   const side = state.turn;
@@ -37,35 +58,61 @@ export function estateAction(state, action, die = 0) {
     next.notice = `${names[side]}发动了${action === 'boost' ? '商圈推广' : '租金护盾'}。`;
     return next;
   }
-  if (state.phase === 'buy' && ['buy','skip'].includes(action)) {
+  if (state.phase === 'roll' && action === 'audit' && !player.audit && next.players[1 - side].boost === 1) {
+    player.audit = true;
+    next.players[1 - side].boost = 2;
+    next.notice = `${names[side]}发动临时稽查，取消了对手的商圈推广。`;
+    return next;
+  }
+  if (state.phase === 'roll' && action === 'sell' && Number.isInteger(target) && next.owners[target] === side) {
+    const value = resalePrice(next, target);
+    player.cash += value;
+    next.owners[target] = null;
+    next.levels[target] = 0;
+    next.notice = `${names[side]}出售了${blocks[target][0]}，收回 ¥${value}。`;
+    return next;
+  }
+  if (['buy','upgrade'].includes(state.phase) && [state.phase, 'skip'].includes(action)) {
     const [name, price] = blocks[player.at];
     if (action === 'buy' && player.cash >= price) {
       player.cash -= price;
       next.owners[player.at] = side;
       next.notice = `${names[side]}买下了${name}。`;
-    } else if (action === 'skip') next.notice = `${names[side]}放弃购买${name}。`;
+    } else if (action === 'upgrade' && player.cash >= upgradeCost(player.at)) {
+      player.cash -= upgradeCost(player.at);
+      next.levels[player.at]++;
+      next.notice = `${names[side]}在${name}盖到 ${next.levels[player.at]} 层，租金提高至 ${rentAt(next, player.at)}。`;
+    } else if (action === 'skip') next.notice = `${names[side]}跳过了${name}的地契操作。`;
     else return state;
     endTurn(next);
     return next;
   }
   if (state.phase !== 'roll' || action !== 'roll' || !Number.isInteger(die) || die < 1 || die > 6) return state;
+  next.die = die;
   const steps = player.at + die;
   if (steps >= blocks.length) player.cash += 75;
   player.at = steps % blocks.length;
-  const [name, type, rent] = blocks[player.at];
+  const [name, type] = blocks[player.at];
   next.notice = `${names[side]}掷出 ${die}，到达${name}。${steps >= blocks.length ? '经过起点，获得 75。' : ''}`;
   if (type === 'gift') {
     player.cash += 55;
     next.notice += '获得市集补贴 55。';
+  } else if (type === 'event') {
+    const [description, amount] = events[next.eventDraw++ % events.length];
+    player.cash += amount;
+    next.notice += `${description}，${amount > 0 ? '获得' : '支付'} ¥${Math.abs(amount)}。`;
   } else if (type === 'fee') {
     player.cash -= 40;
     next.notice += '支付日常开支 40。';
   } else if (Number.isInteger(type) && next.owners[player.at] === null && player.cash >= type) {
     next.phase = 'buy';
     return next;
+  } else if (next.owners[player.at] === side && next.levels[player.at] < maxFloors && player.cash >= upgradeCost(player.at)) {
+    next.phase = 'upgrade';
+    return next;
   } else if (next.owners[player.at] === 1 - side) {
     const other = next.players[1 - side];
-    let due = rent;
+    let due = rentAt(next, player.at);
     if (other.boost === 1) { due *= 2; other.boost = 2; }
     if (player.shield === 1) { due = Math.ceil(due / 2); player.shield = 2; }
     player.cash -= due;
@@ -77,55 +124,140 @@ export function estateAction(state, action, die = 0) {
 }
 
 export function mountEstate() {
-  const view = document.querySelector('#estate');
-  const menu = document.querySelector('#board-games');
+  const view = document.querySelector('#estate-page');
+  const menu = document.querySelector('#tabletop-category');
   const board = document.querySelector('#estate-board');
+  const viewport = document.querySelector('#estate-viewport');
+  const overview = document.querySelector('#estate-overview');
+  let opened = false;
   const notice = document.querySelector('#estate-status');
-  const players = document.querySelector('#estate-players');
+  const deed = document.querySelector('#estate-deed');
+  const turn = document.querySelector('#estate-turn');
+  const dice = document.querySelector('#estate-dice');
+  const players = [...document.querySelectorAll('[data-estate-player]')];
   const controls = [...document.querySelectorAll('[data-estate-action]')];
-  const ring = [[4,4],[3,4],[2,4],[1,4],[0,4],[0,3],[0,2],[0,1],[0,0],[1,0],[2,0],[3,0],[4,0],[4,1],[4,2],[4,3]];
+  const edge = blocks.length / 4;
+  const ring = Array.from({ length: blocks.length }, (_, index) => {
+    const offset = index % edge;
+    return [[edge-offset,edge],[0,edge-offset],[offset,0],[edge,offset]][Math.floor(index / edge)];
+  });
+  const marks = { start: '↻', gift: '+', fee: '−', event: '✦' };
+  let game = initialEstate();
+  let focused = 0;
   const tiles = blocks.map(([name, type, rent], index) => {
-    const tile = document.createElement('div');
+    const tile = document.createElement('button');
+    tile.type = 'button';
     tile.className = 'estate-tile';
+    tile.dataset.district = Math.floor(index / 4);
     const [x,y] = ring[index];
     tile.style.gridArea = `${y+1}/${x+1}`;
     const label = document.createElement('strong');
     label.textContent = name;
+    const badge = document.createElement('span');
+    badge.className = 'estate-tile-badge';
+    badge.textContent = marks[type] ?? '◆';
     const price = document.createElement('small');
-    price.textContent = rent ? `${type} / 租 ${rent}` : '';
     const pieces = document.createElement('span');
     pieces.className = 'estate-pieces';
-    tile.append(label, price, pieces);
-    board.append(tile);
-    return { tile, pieces };
-  });
-  let game = initialEstate();
-  function render() {
-    for (const [index, { tile, pieces }] of tiles.entries()) {
-      tile.dataset.owner = game.owners[index] ?? '';
-      pieces.textContent = game.players.map((player, side) => player.at === index ? side === 0 ? '🟠' : '🟣' : '').join('');
+    pieces.setAttribute('aria-hidden', 'true');
+    const tokens = names.map((_, side) => {
+      const token = document.createElement('i');
+      token.dataset.side = side;
+      pieces.append(token);
+      return token;
+    });
+    const model = document.createElement('span');
+    model.className = 'estate-model';
+    model.setAttribute('aria-hidden', 'true');
+    for (let level = 0; level < maxFloors; level++) {
+      const floor = document.createElement('i');
+      floor.style.setProperty('--floor', level);
+      floor.append(document.createElement('b'), document.createElement('b'));
+      model.append(floor);
     }
-    players.textContent = `橙方 ${game.players[0].cash} · 紫方 ${game.players[1].cash}`;
-    notice.textContent = game.notice + (game.phase === 'finished' ? game.winner === 2 ? ' 平局。' : ` ${names[game.winner]}获胜。`
-      : game.phase === 'buy' ? ' 可购买或跳过。' : ` 轮到${names[game.turn]}。`);
+    tile.append(badge, label, price, model, pieces);
+    tile.onclick = () => { focused = index; render(); };
+    board.append(tile);
+    return { tile, tokens, price, name, type, rent, model };
+  });
+  function follow(index, smooth = true) {
+    const tile = tiles[index].tile;
+    viewport.scrollTo({
+      left: tile.offsetLeft - (viewport.clientWidth - tile.offsetWidth) / 2,
+      top: tile.offsetTop - (viewport.clientHeight - tile.offsetHeight) / 2,
+      behavior: smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto',
+    });
+  }
+  overview.onclick = () => {
+    const enabled = viewport.classList.toggle('overview');
+    overview.setAttribute('aria-pressed', String(enabled));
+    overview.textContent = enabled ? '放大' : '全图';
+    if (!enabled) follow(focused, false);
+  };
+  function render() {
+    for (const [index, { tile, tokens, price, name, type, rent, model }] of tiles.entries()) {
+      tile.dataset.owner = game.owners[index] ?? '';
+      tile.dataset.floors = game.levels[index];
+      for (const [level, floor] of [...model.children].entries()) floor.hidden = level >= game.levels[index];
+      tile.setAttribute('aria-pressed', String(index === focused));
+      for (const [side, token] of tokens.entries()) token.hidden = game.players[side].at !== index;
+      price.textContent = rent ? game.owners[index] !== null ? `租 ${rentAt(game,index)}` : `¥${type}` : '';
+      tile.setAttribute('aria-label', `${name}${price.textContent ? '，' + price.textContent : ''}`);
+    }
+    for (const [side, card] of players.entries()) {
+      card.dataset.active = String(game.phase !== 'finished' && side === game.turn);
+      card.querySelector('strong').textContent = `¥${game.players[side].cash}`;
+      card.querySelector('small').textContent = `${game.owners.filter(owner => owner === side).length} 块地产`;
+    }
+    const [name, type, rent] = blocks[focused];
+    deed.querySelector('strong').textContent = name;
+    const owner = game.owners[focused];
+    deed.querySelector('small').textContent = rent
+      ? `${districts[Math.floor(focused / 4)]} · ${owner === null ? '待售' : names[owner] + '持有'}${game.levels[focused] ? ' · ' + game.levels[focused] + ' 层' : ''}`
+      : { start: '经过可收取 ¥75', gift: '停留可获得 ¥55', fee: '停留需支付 ¥40', event: '触发一张街区事件卡' }[type];
+    deed.querySelector('b').textContent = rent ? owner === null ? `¥${type}` : `租 ¥${rentAt(game,focused)}` : '';
+    turn.textContent = game.phase === 'finished' ? game.winner === 2 ? '平局' : `${names[game.winner]}获胜`
+      : `${names[game.turn]}行动 · 第 ${game.rounds + 1} / 40 回合`;
+    dice.textContent = game.die ? ['','⚀','⚁','⚂','⚃','⚄','⚅'][game.die] : '⚄';
+    notice.textContent = game.notice;
     for (const button of controls) {
       const action = button.dataset.estateAction;
-      button.hidden = action === 'restart' ? false : ['buy','skip'].includes(action) ? game.phase !== 'buy' : game.phase !== 'roll';
+      if (action === 'upgrade' && game.phase === 'upgrade') button.textContent = `盖第 ${game.levels[game.players[game.turn].at] + 1} 层 · ¥${upgradeCost(game.players[game.turn].at)}`;
+      if (action === 'sell') {
+        button.hidden = game.phase !== 'roll' || owner !== game.turn;
+        if (!button.hidden) button.textContent = `卖出地契 · ¥${resalePrice(game, focused)}`;
+      } else if (action === 'buy' || action === 'upgrade') button.hidden = game.phase !== action;
+      else if (action === 'skip') button.hidden = !['buy','upgrade'].includes(game.phase);
+      else if (action !== 'restart') button.hidden = game.phase !== 'roll';
       button.disabled = ['boost','shield'].includes(action) && Boolean(game.players[game.turn][action]);
+      if (action === 'audit') button.disabled = game.players[game.turn].audit || game.players[1-game.turn].boost !== 1;
     }
   }
   for (const button of controls) button.onclick = () => {
     const action = button.dataset.estateAction;
     if (action === 'restart') {
-      if (game.rounds && game.phase !== 'finished' && !window.confirm('重新开始当前桌游？')) return;
+      if ((game.rounds || game.die) && game.phase !== 'finished' && !window.confirm('重新开始当前桌游？')) return;
       game = initialEstate();
-    } else game = estateAction(game, action, action === 'roll' ? Math.floor(Math.random()*6) + 1 : 0);
+      focused = 0;
+      follow(0, false);
+    } else {
+      const actor = game.turn;
+      game = estateAction(game, action, action === 'roll' ? Math.floor(Math.random()*6) + 1 : 0, focused);
+      if (action === 'roll') {
+        focused = game.players[actor].at;
+        follow(focused);
+      }
+    }
     render();
   };
   render();
   return hash => {
     menu.hidden = hash !== '#board-games';
     view.hidden = hash !== '#estate';
+    if (!view.hidden && !opened) {
+      opened = true;
+      requestAnimationFrame(() => follow(0, false));
+    }
     return !menu.hidden || !view.hidden;
   };
 }

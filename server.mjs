@@ -127,6 +127,7 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     ['/music.mjs', ['music.mjs', 'text/javascript; charset=utf-8']],
     ['/checkers.mjs', ['checkers.mjs', 'text/javascript; charset=utf-8']],
     ['/checkers-rules.mjs', ['checkers-rules.mjs', 'text/javascript; charset=utf-8']],
+    ['/estate-map.webp', ['estate-map.webp', 'image/webp']],
     ['/hero.webp', ['hero.webp', 'image/webp']],
   ]);
   const server = createServer(async (req, res) => {

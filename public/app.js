@@ -6,8 +6,8 @@ const showCheckers = mountCheckers(telegram);
 const showEstate = mountEstate();
 mountMusic();
 const lobby = document.querySelector('#lobby');
-const category = document.querySelector('#games');
-const gameMenu = document.querySelector('#gomoku');
+const category = document.querySelector('#chess-category');
+const gameMenu = document.querySelector('#gomoku-menu');
 const room = document.querySelector('#room');
 const board = document.querySelector('#board');
 const status = document.querySelector('#status');
@@ -253,7 +253,7 @@ function route() {
   const checkersVisible = showCheckers(hash);
   const estateVisible = showEstate(hash);
   lobby.hidden = inRoom || !category.hidden || !gameMenu.hidden || checkersVisible || estateVisible;
-  window.scrollTo(0, 0);
+  requestAnimationFrame(() => window.scrollTo(0, 0));
   if (!room.hidden) {
     render();
     request();

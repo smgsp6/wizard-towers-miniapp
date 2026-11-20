@@ -48,3 +48,33 @@ test('estate finishes when the payer goes bankrupt', () => {
   assert.equal(result.phase, 'finished');
   assert.equal(result.winner, 1);
 });
+
+test('estate upgrades and complete districts increase rent and debit the correct player', () => {
+  const start = initialEstate();
+  start.players[0].at = 39;
+  start.owners[1] = start.owners[2] = 0;
+  let game = estateAction(start, 'roll', 2);
+  assert.equal(game.phase, 'upgrade');
+  game = estateAction(game, 'upgrade');
+  assert.equal(game.levels[1], 1);
+  assert.equal(game.players[0].cash, 675);
+  game = estateAction(game, 'roll', 1);
+  assert.equal(game.players[1].cash, 602);
+  assert.equal(game.players[0].cash, 723);
+});
+
+test('estate events, opponent audit and resales change only the relevant ledger', () => {
+  const start = initialEstate();
+  start.players[0].at = 16;
+  start.players[1].boost = 1;
+  start.owners[1] = 0;
+  let game = estateAction(start, 'audit');
+  assert.equal(game.players[1].boost, 2);
+  assert.equal(game.players[0].audit, true);
+  game = estateAction(game, 'sell', 0, 1);
+  assert.equal(game.owners[1], null);
+  assert.equal(game.players[0].cash, 721);
+  game = estateAction(game, 'roll', 1);
+  assert.equal(game.players[0].cash, 786);
+  assert.equal(game.eventDraw, 1);
+});
