@@ -38,7 +38,7 @@ for attempt in {1..15}; do
        require("node:https").get({hostname:"proxy", servername:"localhost", headers:{host:"localhost"}, ca}, res => {
          let body = "";
          res.setEncoding("utf8").on("data", chunk => body += chunk);
-         res.on("end", () => { if (res.statusCode !== 200 || !body.includes("棋趣大厅")) { console.error("Proxy status:", res.statusCode, body.slice(0, 120)); process.exitCode = 1; } });
+         res.on("end", () => { if (res.statusCode !== 200 || !body.includes("游戏大厅")) { console.error("Proxy status:", res.statusCode, body.slice(0, 120)); process.exitCode = 1; } });
        }).on("error", error => { console.error(error.code); process.exitCode = 1; });
      '; then
     printf 'Docker 启动、持久卷和本地 HTTPS 代理验证通过。\n'

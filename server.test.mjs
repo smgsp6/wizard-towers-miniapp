@@ -51,7 +51,9 @@ test('only the owner and the seated authorized guest can play', async t => {
   const move = (id, x, y) => call(id, {type:'move', x, y});
   const page = await fetch(address);
   assert.equal(page.status, 200);
-  assert.doesNotMatch(await page.text(), /id="(?:management|analysis|v-actions|reset)"|管理员工具/);
+  const html = await page.text();
+  assert.match(html, /<title>游戏大厅<\/title>/);
+  assert.doesNotMatch(html, /id="(?:management|analysis|v-actions|reset)"|管理员工具/);
   const getPanel = id => fetch(address + '/api/admin-panel', {
     headers: id ? { 'X-Telegram-Init-Data': signed(id) } : {},
   });
