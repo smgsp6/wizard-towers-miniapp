@@ -7,6 +7,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify Git identities contain no email addresses
+        run: |
+          count=$(git log --format='%ae%n%ce' HEAD | awk 'NF { found++ } END { print found+0 }')
+          if [ "$count" -ne 0 ]; then
+            echo 'Commit history contains a non-empty identity email field.'
+            exit 1
+          fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
