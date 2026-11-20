@@ -37,3 +37,17 @@ test('handles opening and finished boards', () => {
   assert.equal(chooseMove(position([], [])), at(7,7));
   assert.equal(chooseMove(Array(size * size).fill(2)), -1);
 });
+
+test('VCF marks a short forced double-ended four and does not mutate the board', async () => {
+  const { findVCF } = await import('./gomoku-ai.mjs');
+  const board = position([[1,1],[3,3]], [[5,7],[6,7],[7,7]]);
+  const before = board.slice();
+  const line = findVCF(board, 2);
+  assert.equal(line.length, 3);
+  assert.deepEqual(line.map(move => move.side), [2,1,2]);
+  assert.deepEqual(board, before);
+  for (const move of line) board[move.index] = move.side;
+  const last = line.at(-1).index;
+  assert(hasFive(board, last % size, Math.floor(last / size), 2));
+  assert.equal(findVCF(position([[1,1]], [[7,7]]), 2), null);
+});

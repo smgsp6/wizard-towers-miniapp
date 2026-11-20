@@ -1,0 +1,9 @@
+**
+!server.mjs
+!room-store.mjs
+!gomoku-ai.mjs
+!public/
+!public/**
+!deploy/
+!deploy/register-webhook.mjs
+!deploy/Caddyfile

@@ -15,22 +15,31 @@
 <section id="lobby">
   <nav aria-label="游戏分类"><a href="#" aria-current="page">首页</a><a href="#games">棋类游戏</a></nav>
   <div class="hero"><div class="hero-copy"><span>首发游戏</span><h1>五子棋</h1><p>黑白交锋，五子成线。<br>和获授权的好友下一局。</p><a class="primary" href="#gomoku">进入五子棋 <b aria-hidden="true">→</b></a></div></div>
-  <section id="games"><h2>棋类游戏</h2><a class="game" href="#gomoku"><span class="game-icon" aria-hidden="true"></span><span><strong>五子棋</strong><small>双人对弈 · 15 × 15 棋盘</small></span><b aria-hidden="true">›</b></a></section>
+  <section id="games"><h2>棋类游戏</h2><a class="game" href="#gomoku"><span class="game-icon" aria-hidden="true"></span><span><strong>五子棋</strong><small>好友对弈 · 15 × 15 棋盘</small></span><b aria-hidden="true">›</b></a><a class="game" href="#practice"><span class="game-icon" aria-hidden="true"></span><span><strong>人机练习</strong><small>自选黑白 · 对战五子棋 AI</small></span><b aria-hidden="true">›</b></a></section>
 </section>
 <section id="room" hidden>
   <a class="back" href="#">‹ 返回大厅</a>
-  <header class="room-head"><h1>五子棋</h1><p>任一方向率先连成至少五子即获胜。</p></header>
+  <header class="room-head"><h1 id="room-title">五子棋</h1><p>任一方向率先连成至少五子即获胜。</p></header>
   <details id="management" class="management" hidden>
     <summary>管理员工具</summary>
     <form id="authorize"><label for="friend-id">Telegram 数字 ID</label><div><input id="friend-id" inputmode="numeric" maxlength="16" required><button type="submit">授权好友</button></div></form>
     <label for="opponent">当前对手</label>
     <select id="opponent"><option value="">选择已授权好友</option></select>
-    <div class="controls"><button id="toggle-ai" type="button" hidden></button><button id="revoke" type="button" hidden>移除授权</button></div>
+    <label for="owner-color">我的执子颜色</label><select id="owner-color"><option value="1">黑方 · 先手</option><option value="2">白方 · 后手</option></select>
+    <div class="controls"><button id="toggle-ai" type="button" hidden></button><button id="v-mode" type="button" hidden></button><button id="revoke" type="button" hidden>移除授权</button></div>
   </details>
+  <aside id="analysis" class="management" hidden>
+    <strong>对手有冲四胜线</strong>
+    <p id="analysis-context"></p>
+    <ol id="analysis-line"></ol>
+    <button id="resign" type="button">认输</button>
+  </aside>
   <div class="arena">
     <div class="seats"><span><i class="black"></i>黑方</span><span><i class="white"></i>白方</span></div>
     <div id="board" role="group" aria-label="十五路五子棋棋盘"></div>
+    <div id="v-actions" class="controls" hidden><button id="v-start" type="button">选两个落点</button><button id="v-submit" type="button" hidden>确认双落子</button><button id="v-cancel" type="button" hidden>取消</button></div>
     <p id="status" role="status">正在连接对局…</p>
+    <div id="practice-controls" class="controls" hidden><button data-start-color="1">执黑开局</button><button data-start-color="2">执白开局</button></div>
     <div class="controls"><button id="join" class="primary" hidden>入席</button><button id="reset" hidden>清盘重开</button></div>
   </div>
 </section>

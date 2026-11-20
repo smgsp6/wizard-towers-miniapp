@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hasFive, makeServer, telegramID } from './server.mjs';
@@ -134,4 +134,72 @@ test('AI waits, can be canceled, and never exposes controls to the guest', async
   assert.equal((await webhook('incorrect', 'private')).status, 403);
   assert.deepEqual(await (await webhook('synthetic-secret', 'group')).json(), {});
   assert.equal((await (await webhook('synthetic-secret', 'private')).json()).chat_id, 202);
+});
+
+test('players can switch colors before play and practice stays separate', async t => {
+  const server = makeServer({ token, owner: '101', allowed: ['202'] }).listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await once(server, 'listening');
+  async function call(path, id, body) {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'X-Telegram-Init-Data': signed(id) },
+      body: body ? JSON.stringify({ opponent: '202', ...body }) : undefined,
+    });
+    return [res.status, await res.json()];
+  }
+  await call('room', 101, { type: 'select', id: '202' });
+  assert.equal((await call('room', 101, { type: 'color', side: 2 }))[1].side, 2);
+  assert.equal((await call('room', 202, { type: 'join' }))[1].side, 1);
+  assert.equal((await call('room', 101, { type: 'move', x: 1, y: 1 }))[0], 409);
+  assert.equal((await call('room', 202, { type: 'move', x: 1, y: 1 }))[1].board[16], 1);
+  assert.equal((await call('room', 101, { type: 'color', side: 1 }))[0], 409);
+  assert.equal((await call('room', 202, { type: 'v-mode', enabled: true }))[0], 400);
+  assert.equal((await call('room', 101, { type: 'v-mode', enabled: true }))[1].management.vMode, true);
+  assert.equal((await call('room', 101, { type: 'v-move', cells: [18, 18] }))[0], 400);
+  const [, pair] = await call('room', 101, { type: 'v-move', cells: [17, 18] });
+  assert.deepEqual(pair.board.slice(16, 19), [1, 2, 2]);
+  assert.equal(pair.turn, 1);
+  assert.equal((await call('room', 202))[1].management, undefined);
+  const [, outOfTurn] = await call('room', 101, { type: 'v-move', cells: [19, 20] });
+  assert.deepEqual(outOfTurn.board.slice(19, 21), [2, 2]);
+
+  const [status, practice] = await call('practice', 202, { type: 'start', side: 2 });
+  assert.equal(status, 200);
+  assert.equal(practice.side, 2);
+  assert.equal(practice.last, null);
+  assert.equal((await call('practice', 101))[1].joined, false);
+  assert.equal((await call('room', 202))[1].board[16], 1);
+  assert.equal((await call('practice', 202, { type: 'start', side: 1 }))[1].side, 1);
+  assert.equal((await call('practice', 202, { type: 'move', x: 2, y: 2 }))[1].board[32], 1);
+});
+
+test('a verified opposing VCF pauses AI and is visible to the owner only', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'gomoku-vcf-'));
+  const stateFile = join(directory, 'state.json');
+  const board = Array(225).fill(0);
+  for (const index of [110, 111, 112, 113]) board[index] = 2;
+  await writeFile(stateFile, JSON.stringify({
+    version: 1, owner: '101', allowed: ['202'], selected: '202',
+    rooms: { '202': { board, joined: true, ai: true, aiSide: 1, dueAt: Date.now(), turn: 1, result: 0, last: 113 } },
+  }), { mode: 0o600 });
+  const server = makeServer({ token, owner: '101', stateFile }).listen(0, '127.0.0.1');
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve));
+    await rm(directory, { recursive: true, force: true });
+  });
+  await once(server, 'listening');
+  const call = async id => (await fetch(`http://127.0.0.1:${server.address().port}/api/room`, {
+    headers: { 'X-Telegram-Init-Data': signed(id) },
+  })).json();
+  let owner = await call(101);
+  for (let attempt = 0; attempt < 20 && owner.management.ai; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 15));
+    owner = await call(101);
+  }
+  assert.equal(owner.management.ai, false);
+  assert.deepEqual(owner.board, board);
+  assert.equal(owner.management.analysis.afterMove, true);
+  assert.equal(owner.management.analysis.line.length, 2);
+  assert.equal((await call(202)).management, undefined);
 });

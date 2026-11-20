@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roomStore } from './room-store.mjs';
-import { chooseMove, hasFive, size } from './gomoku-ai.mjs';
+import { chooseMove, findVCF, hasFive, size } from './gomoku-ai.mjs';
 export { hasFive } from './gomoku-ai.mjs';
 
 export function telegramID(raw, token, now = Date.now()) {
@@ -30,7 +30,7 @@ export function telegramID(raw, token, now = Date.now()) {
 }
 
 const validID = id => typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id) && Number.isSafeInteger(Number(id));
-const empty = (ai = false) => ({ joined: false, ai, dueAt: null, board: Array(size * size).fill(0), turn: 1, result: 0, last: null });
+const empty = (ai = false, aiSide = 1) => ({ joined: false, ai, aiSide, dueAt: null, board: Array(size * size).fill(0), turn: 1, result: 0, last: null });
 
 function place(game, index, side) {
   game.board[index] = side;
@@ -40,11 +40,52 @@ function place(game, index, side) {
   game.turn = 3 - side;
 }
 
-function playAI(game) {
-  if (!game.ai || !game.joined || game.result || game.turn !== 1) return;
-  const move = chooseMove(game.board);
-  if (move !== -1) place(game, move, 1);
+function playAI(game, alertOwner) {
+  const side = game.aiSide ?? 1;
+  if (!game.ai || !game.joined || game.result || game.turn !== side) return;
+  const move = chooseMove(game.board, side);
+  if (move === -1) return;
+  if (alertOwner && !hasFive(game.board, move % size, Math.floor(move / size), side)) {
+    const preview = game.board.slice();
+    preview[move] = side;
+    const line = findVCF(preview, 3 - side);
+    if (line) {
+      game.ai = false;
+      game.analysis = { afterMove: true, line: [{ index: move, side }, ...line] };
+      return;
+    }
+    const forcesReply = preview.some((stone, index) =>
+      !stone && hasFive(preview, index % size, Math.floor(index / size), side));
+    if (forcesReply && findVCF(game.board, side)?.[0].index !== move) {
+      const latent = findVCF(game.board, 3 - side);
+      if (latent) {
+        game.ai = false;
+        game.analysis = { afterMove: false, line: latent };
+        return;
+      }
+    }
+  }
+  place(game, move, side);
 }
+
+function queueAI(game) {
+  if (game.ai && game.joined && !game.result && game.turn === (game.aiSide ?? 1)) {
+    game.dueAt ??= Date.now() + randomInt(3000, 10001);
+  } else {
+    game.dueAt = null;
+  }
+}
+
+function movePlayer(game, action, side) {
+  const { x, y } = action;
+  if (![x,y].every(n => Number.isInteger(n) && n >= 0 && n < size)) return 400;
+  const index = y * size + x;
+  if (!game.joined || side !== game.turn || game.result || game.board[index] || (game.ai && side === (game.aiSide ?? 1))) return 409;
+  place(game, index, side);
+  return 200;
+}
+
+const games = state => [...Object.values(state.rooms), ...Object.values(state.practice ?? {})];
 
 async function readJSON(req, limit) {
   let length = 0;
@@ -62,14 +103,15 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
   let timer;
   function schedule(retry = 0) {
     clearTimeout(timer);
-    const deadlines = Object.values(store.state.rooms).map(game => game.dueAt).filter(Number.isSafeInteger);
+    const deadlines = games(store.state).map(game => game.dueAt).filter(Number.isSafeInteger);
     if (!deadlines.length) return;
     timer = setTimeout(() => {
       const state = structuredClone(store.state);
-      for (const game of Object.values(state.rooms)) {
+      const practiceGames = new Set(Object.values(state.practice ?? {}));
+      for (const game of games(state)) {
         if (game.dueAt !== null && game.dueAt <= Date.now()) {
           game.dueAt = null;
-          playAI(game);
+          playAI(game, !practiceGames.has(game));
         }
       }
       schedule(store.commit(state) ? 0 : 1000);
@@ -112,7 +154,8 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
         return send(400, {});
       }
     }
-    if (req.url !== '/api/room' || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
+    const practice = req.url === '/api/practice';
+    if ((!practice && req.url !== '/api/room') || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
     if (!token || !validID(owner)) return send(503, { error: 'Telegram 对局服务尚未配置' });
     const id = telegramID(req.headers['x-telegram-init-data'], token);
     if (!id) return send(401, { error: '请从 Telegram 小程序重新打开大厅' });
@@ -125,6 +168,26 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     const saved = store.state;
     if (!admin && !saved.allowed.includes(id)) return send(403, { error: '你的账号尚未获得对局授权' });
     const state = action ? structuredClone(saved) : saved;
+    if (practice) {
+      const existing = state.practice?.[id];
+      let game = existing ?? empty();
+      if (action) {
+        if (action.type === 'start' && [1, 2].includes(action.side)) {
+          game = { ...empty(true, 3 - action.side), joined: true };
+        } else if (action.type === 'move' && existing) {
+          const code = movePlayer(game, action, 3 - game.aiSide);
+          if (code !== 200) return send(code, { error: '当前无法在这里落子' });
+        } else {
+          return send(400, { error: '无效操作' });
+        }
+        queueAI(game);
+        (state.practice ??= {})[id] = game;
+        if (!store.commit(state)) return send(503, { error: '暂时无法保存，请重试' });
+        schedule();
+      }
+      const { board, turn, result, last, joined, aiSide } = game;
+      return send(200, { board, turn, result, last, joined, side: joined ? 3 - aiSide : 0 });
+    }
     let opponent = admin ? state.selected : id;
     if (admin && ['authorize', 'revoke', 'select'].includes(action?.type)) {
       const target = action.id;
@@ -133,6 +196,7 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
       if (action.type === 'revoke') {
         state.allowed = state.allowed.filter(allowedID => allowedID !== target);
         delete state.rooms[target];
+        if (state.practice) delete state.practice[target];
         if (state.selected === target) state.selected = null;
       }
       if (action.type === 'select') {
@@ -146,37 +210,51 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
       if (action.type === 'join' && !admin) {
         game.joined = true;
       } else if (action.type === 'reset' && admin) {
-        game = empty(game.ai);
+        game = empty(game.ai, game.aiSide ?? 1);
+      } else if (action.type === 'color' && admin && [1, 2].includes(action.side)) {
+        if (game.last !== null) return send(409, { error: '本局已开局，请重开后换色' });
+        game.aiSide = action.side;
+        game.dueAt = null;
       } else if (action.type === 'mode' && admin && typeof action.ai === 'boolean') {
         game.ai = action.ai;
-      } else if (action.type === 'move') {
-        const side = admin ? 1 : 2;
-        const { x, y } = action;
-        if (![x,y].every(n => Number.isInteger(n) && n >= 0 && n < size)) return send(400, { error: '落点超出棋盘' });
-        const index = y * size + x;
-        if (!game.joined || side !== game.turn || game.result || game.board[index] || (admin && game.ai)) {
-          return send(409, { error: '当前无法在这里落子' });
+        if (game.ai) delete game.analysis;
+      } else if (action.type === 'v-mode' && admin && typeof action.enabled === 'boolean') {
+        game.vMode = action.enabled;
+      } else if (action.type === 'v-move' && admin && game.vMode && game.joined && !game.result) {
+        const cells = action.cells;
+        if (!Array.isArray(cells) || cells.length !== 2 || cells[0] === cells[1] ||
+            cells.some(index => !Number.isInteger(index) || index < 0 || index >= game.board.length || game.board[index])) {
+          return send(400, { error: '请选择两个不同的空位' });
         }
-        place(game, index, side);
+        game.ai = false;
+        delete game.analysis;
+        for (const index of cells) {
+          place(game, index, game.aiSide ?? 1);
+          if (game.result) break;
+        }
+      } else if (action.type === 'resign' && admin && game.joined && !game.result) {
+        game.result = 3 - (game.aiSide ?? 1);
+        delete game.analysis;
+      } else if (action.type === 'move') {
+        const ownerSide = game.aiSide ?? 1;
+        const code = movePlayer(game, action, admin ? ownerSide : 3 - ownerSide);
+        if (code !== 200) return send(code, { error: '当前无法在这里落子' });
+        delete game.analysis;
       } else {
         return send(400, { error: '无效操作' });
       }
-      if (game.ai && game.joined && !game.result && game.turn === 1) {
-        game.dueAt ??= Date.now() + randomInt(3000, 10001);
-      } else {
-        game.dueAt = null;
-      }
+      queueAI(game);
       state.rooms[opponent] = game;
     }
     if (action) {
       if (!store.commit(state)) return send(503, { error: '暂时无法保存，请重试' });
       schedule();
     }
-    const { board, turn, result, last, joined, ai } = state.rooms[opponent] ?? empty();
-    const side = admin ? 1 : joined ? 2 : 0;
+    const { board, turn, result, last, joined, ai, aiSide = 1, analysis, vMode = false } = state.rooms[opponent] ?? empty();
+    const side = admin ? aiSide : joined ? 3 - aiSide : 0;
     return send(200, {
       board, turn, result, last, joined, side,
-      ...(admin && { management: { allowed: state.allowed, opponent, ai } }),
+      ...(admin && { management: { allowed: state.allowed, opponent, ai, analysis, vMode } }),
     });
   });
   server.on('close', () => clearTimeout(timer));

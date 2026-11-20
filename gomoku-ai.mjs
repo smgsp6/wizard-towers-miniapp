@@ -144,3 +144,40 @@ export function chooseMove(position, side = 1) {
   }
   return best.index;
 }
+
+// Search a continuous four sequence. Each recorded step is hypothetical.
+export function findVCF(position, attacker) {
+  const board = position.slice();
+  const defender = 3 - attacker;
+  let visits = 0;
+
+  function follow(remaining) {
+    if (++visits > 80) return null;
+    const threats = rank(board, attacker);
+    if (threats.win) return [{ index: threats.options[0].index, side: attacker }];
+    if (remaining === 1 || threats.lost) return null;
+    for (const move of threats.options) {
+      if (move.attack < 3300 || visits >= 80) continue;
+      board[move.index] = attacker;
+      const replies = rank(board, defender);
+      let line = null;
+      if (!replies.win && replies.forced) {
+        if (replies.lost) {
+          const [first, second] = replies.options;
+          line = [{ index: first.index, side: defender }, { index: second.index, side: attacker }];
+        } else {
+          const reply = replies.options[0].index;
+          board[reply] = defender;
+          const continuation = follow(remaining - 1);
+          board[reply] = 0;
+          if (continuation) line = [{ index: reply, side: defender }, ...continuation];
+        }
+      }
+      board[move.index] = 0;
+      if (line) return [{ index: move.index, side: attacker }, ...line];
+    }
+    return null;
+  }
+
+  return follow(3);
+}

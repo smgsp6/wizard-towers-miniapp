@@ -26,3 +26,6 @@ nav{display:flex;gap:24px;color:#536181;font-weight:650}nav a{padding:16px 0;bor
 .management form div{display:flex;gap:8px}
 .management input,.management select,.management button{min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:white;color:#142044;font:inherit}
 .management input{min-width:0;flex:1}.management select{width:100%;margin-bottom:8px}
+.game + .game{margin-top:9px}
+.cell[data-step]::after{content:attr(data-step);display:grid;place-items:center;width:88%;aspect-ratio:1;border-radius:50%;background:#443225;color:white;font-size:clamp(9px,2.7vw,14px);font-weight:800}
+.management .controls{flex-wrap:wrap}

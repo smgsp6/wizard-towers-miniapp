@@ -11,3 +11,5 @@ jobs:
         with:
           node-version: '24'
       - run: node --test
+      - run: bash -n deploy/install.sh deploy/smoke.sh
+      - run: bash deploy/smoke.sh
