@@ -21,7 +21,7 @@ if ! "${compose[@]}" up --build --detach --wait; then
 fi
 "${compose[@]}" exec -T app node -e '
   const fs = require("node:fs");
-  if (!process.getuid()) process.exit(1);
+  if (!process.getuid() || process.version !== "v24.22.3") process.exit(1);
   fs.writeFileSync("/state/synthetic-check", "ok", { mode: 0o600 });
   fetch("http://127.0.0.1:8080/api/room").then(r => {
     if (r.status !== 401) process.exitCode = 1;
@@ -38,7 +38,12 @@ for attempt in {1..15}; do
        require("node:https").get({hostname:"proxy", servername:"localhost", headers:{host:"localhost"}, ca}, res => {
          let body = "";
          res.setEncoding("utf8").on("data", chunk => body += chunk);
-         res.on("end", () => { if (res.statusCode !== 200 || !body.includes("游戏大厅")) { console.error("Proxy status:", res.statusCode, body.slice(0, 120)); process.exitCode = 1; } });
+         res.on("end", () => {
+           if (res.statusCode !== 200 || !body.includes("游戏大厅") || !res.headers["content-security-policy"] ||
+               res.headers["permissions-policy"] !== "camera=(), microphone=(), geolocation=()") {
+             console.error("Unexpected HTTPS response:", res.statusCode); process.exitCode = 1;
+           }
+         });
        }).on("error", error => { console.error(error.code); process.exitCode = 1; });
      '; then
     printf 'Docker 启动、持久卷和本地 HTTPS 代理验证通过。\n'

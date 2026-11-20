@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { isIP } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { roomStore } from './room-store.mjs';
 import { checkersRoom } from './checkers-room.mjs';
@@ -89,18 +90,61 @@ function movePlayer(game, action, side) {
 
 const games = state => [...Object.values(state.rooms), ...Object.values(state.practice ?? {})];
 
-async function readJSON(req, limit) {
-  let length = 0;
-  const chunks = [];
-  for await (const chunk of req) {
-    length += chunk.length;
-    if (length > limit) return null;
-    chunks.push(chunk);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+const csp = [
+  "default-src 'none'",
+  "script-src 'self' https://telegram.org/js/telegram-web-app.js",
+  "style-src 'self'",
+  "img-src 'self'",
+  "connect-src 'self'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors https://web.telegram.org",
+].join('; ');
+
+function limiter() {
+  const windows = new Map();
+  let nextCleanup = 0;
+  return (key, max) => {
+    const now = Date.now();
+    if (now >= nextCleanup) {
+      for (const [entry, window] of windows) {
+        if (window.until <= now) windows.delete(entry);
+      }
+      nextCleanup = now + 60_000;
+    }
+    let window = windows.get(key);
+    if (!window || window.until <= now) {
+      if (!window && windows.size >= 4096) return 60;
+      window = { count: 0, until: now + 60_000 };
+      windows.set(key, window);
+    }
+    if (window.count >= max) return Math.max(1, Math.ceil((window.until - now) / 1000));
+    window.count++;
+    return 0;
+  };
 }
 
-export function makeServer({ token, owner, allowed = [], stateFile, webhookSecret } = {}) {
+async function readJSON(req, limit) {
+  const length = Number(req.headers['content-length']);
+  if (length > limit) return { status: 413 };
+  let size = 0;
+  const chunks = [];
+  try {
+    for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+      size += chunk.length;
+      if (size > limit) return { status: 413 };
+      chunks.push(chunk);
+    }
+    return { value: JSON.parse(Buffer.concat(chunks).toString('utf8')) };
+  } catch {
+    return { status: 400 };
+  }
+}
+
+export function makeServer({ token, owner, allowed = [], stateFile, webhookSecret, trustReverseProxy = false } = {}) {
+  const limited = limiter();
+  const accountLimited = limiter();
+  const webhookLimited = limiter();
   const store = roomStore(stateFile, owner, allowed.filter(validID));
   let timer;
   function schedule(retry = 0) {
@@ -131,9 +175,16 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     ['/estate-map.webp', ['estate-map.webp', 'image/webp']],
     ['/hero.webp', ['hero.webp', 'image/webp']],
   ]);
-  const server = createServer(async (req, res) => {
+  const server = createServer({
+    maxHeaderSize: 16_384,
+    headersTimeout: 8_000,
+    requestTimeout: 12_000,
+    connectionsCheckingInterval: 1_000,
+  }, async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy', csp);
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     if (req.method === 'GET' && files.has(req.url)) {
       const [name, type] = files.get(req.url);
       try {
@@ -144,22 +195,40 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
       }
       return;
     }
-    const send = (status, value) => res.writeHead(status, {
-      'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
-    }).end(JSON.stringify(value));
+    const send = (status, value) => {
+      if (req.method === 'POST' && !req.complete) res.setHeader('Connection', 'close');
+      return res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+      }).end(JSON.stringify(value));
+    };
+    const forwarded = req.headers['x-forwarded-for'];
+    const address = trustReverseProxy && typeof forwarded === 'string' && isIP(forwarded)
+      ? forwarded : req.socket.remoteAddress;
+    const rejectRate = retry => {
+      if (!retry) return false;
+      res.setHeader('Retry-After', retry);
+      send(429, { error: '请求过于频繁，请稍后重试' });
+      return true;
+    };
+    const rejectBody = status => {
+      if (status === 413) res.setHeader('Connection', 'close');
+      return send(status, { error: status === 413 ? '请求体过大' : '无效请求' });
+    };
     if (req.url === '/api/telegram' && req.method === 'POST') {
       const secret = Buffer.from(webhookSecret ?? '');
       const supplied = Buffer.from(req.headers['x-telegram-bot-api-secret-token'] ?? '');
-      if (!secret.length || supplied.length !== secret.length || !timingSafeEqual(secret, supplied)) return send(403, {});
-      try {
-        const { message } = (await readJSON(req, 32768)) ?? {};
-        const id = message?.from?.id;
-        if (message?.chat?.type !== 'private' || message.chat.id !== id || !validID(String(id))) return send(200, {});
-        if (!/^\/(id|start)(?:@\w+)?(?:\s|$)/i.test(message.text ?? '')) return send(200, {});
-        return send(200, { method: 'sendMessage', chat_id: id, text: `你的 Telegram 数字 ID 是 ${id}。请私下发给管理员申请授权。` });
-      } catch {
-        return send(400, {});
+      if (!secret.length || supplied.length !== secret.length || !timingSafeEqual(secret, supplied)) {
+        if (rejectRate(limited(`webhook-invalid:${address}`, 60))) return;
+        return send(403, {});
       }
+      if (rejectRate(webhookLimited('telegram', 300))) return;
+      const { status, value } = await readJSON(req, 32768);
+      if (status) return rejectBody(status);
+      const message = value?.message;
+      const id = message?.from?.id;
+      if (message?.chat?.type !== 'private' || message.chat.id !== id || !Number.isSafeInteger(id) || id <= 0) return send(200, {});
+      if (typeof message.text !== 'string' || !/^\/(id|start)(?:@\w+)?(?:\s|$)/i.test(message.text ?? '')) return send(200, {});
+      return send(200, { method: 'sendMessage', chat_id: id, text: `你的 Telegram 数字 ID 是 ${id}。请私下发给管理员申请授权。` });
     }
     const practice = req.url === '/api/practice';
     const checkers = req.url === '/api/checkers';
@@ -167,10 +236,14 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     const panels = { '/api/admin-panel': 'admin-panel.html', '/api/checkers-admin': 'checkers-admin.html', '/api/estate-admin': 'estate-admin.html' };
     const panel = req.method === 'GET' && Object.hasOwn(panels, req.url) ? panels[req.url] : null;
     if ((!panel && !practice && !checkers && !estate && req.url !== '/api/room') || !['GET', 'POST'].includes(req.method)) return send(404, { error: '页面不存在' });
+    if (rejectRate(limited(`api:${address}`, 900))) return;
     if (!token || !validID(owner)) return send(503, { error: 'Telegram 对局服务尚未配置' });
     const id = telegramID(req.headers['x-telegram-init-data'], token);
     if (!id) return send(401, { error: '请从 Telegram 小程序重新打开大厅' });
     const admin = id === owner;
+    if (!admin && !store.state.allowed.includes(id)) return send(403, { error: '你的账号尚未获得对局授权' });
+    const write = req.method === 'POST';
+    if (rejectRate(accountLimited(`${write ? 'write' : 'read'}:${id}`, write ? 90 : 240))) return;
     if (panel) {
       if (!admin) return send(403, { error: '没有访问权限' });
       try {
@@ -185,7 +258,9 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
     }
     let action = null;
     if (req.method === 'POST') {
-      try { action = await readJSON(req, 2048); } catch {}
+      const { status, value } = await readJSON(req, 2048);
+      if (status) return rejectBody(status);
+      action = value;
       if (!action || typeof action.type !== 'string') return send(400, { error: '无效请求' });
     }
     const saved = store.state;
@@ -293,6 +368,7 @@ export function makeServer({ token, owner, allowed = [], stateFile, webhookSecre
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const server = makeServer({
+    trustReverseProxy: process.env.TRUST_REVERSE_PROXY === '1',
     token: process.env.TELEGRAM_BOT_TOKEN,
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
     stateFile: process.env.GOMOKU_STATE_FILE,

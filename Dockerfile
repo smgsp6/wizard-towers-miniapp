@@ -1,4 +1,4 @@
-FROM docker.io/library/node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c
+FROM docker.io/library/node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 WORKDIR /app
 RUN mkdir /state && chown node:node /state && chmod 700 /state
 COPY estate-admin.html estate-room.mjs checkers-admin.html checkers-room.mjs admin-panel.html server.mjs room-store.mjs gomoku-ai.mjs ./

@@ -37,13 +37,13 @@ bash deploy/install.sh --register-webhook
 
 用 `docker compose --env-file private/compose.env stop` 停止服务。重要更新前先停服，私下备份 `private/` 并用 Docker 官方的卷备份流程备份 `qiqu-gomoku_room-state`。证书卷也应作为私有数据保护。回滚时使用原发布源码及相应存档备份执行安装脚本。保留原安装目录的 `private/` 配置，切勿运行带 `--volumes` 的清理命令来做常规更新。
 
-容器依赖为 Docker Official Images 的 Node.js 24.22.1（MIT，Debian slim）与 Caddy 2.11.9（Apache-2.0，Alpine），在 Dockerfile 和 Compose 中锁定官方镜像清单摘要。应用无 npm 依赖。容器验证运行 `bash deploy/smoke.sh`，仅用合成账号、临时卷和本地 TLS。
+容器依赖为 Docker Official Images 的 Node.js 24.22.3（MIT，Debian slim）与 Caddy 2.11.9（Apache-2.0，Alpine），在 Dockerfile 和 Compose 中锁定官方镜像清单摘要。应用无 npm 依赖。容器验证运行 `bash deploy/smoke.sh`，仅用合成账号、临时卷和本地 TLS。
 
 好友局的 AI 代下会检查对手最多三手的 VCF（包含成五）。拟落子会留下已验证的胜线，或短暂冲四却没有找到本方取胜线时，管理员会看到带编号的变化，并可接管或认输。提示按显示的前提成立，搜索有上限。独立的人机练习继续对弈。
 
 V 模式由管理员在指定好友局开启，可选定两个空位并确认。服务器按选定顺序落同色子，不要求当前轮到管理员。第一枚已结束对局时不会落第二枚。执行后取消待执行的 AI 落子。
 
-镜像审查来源：[Node.js 24.22.1 发布说明](https://nodejs.org/en/blog/release/v24.22.1)、[Caddy 2.11.9 发布](https://github.com/caddyserver/caddy/releases/tag/v2.11.9)、[Caddy 安全公告](https://github.com/caddyserver/caddy/security/advisories)、[Docker Official Images](https://github.com/docker-library/official-images)。已按上游公告选择修复后的 Caddy 版本。当前开发环境无法访问 Debian 和 Alpine 的完整安全数据库，基础镜像传递依赖的完整漏洞扫描尚待完成。
+镜像审查来源：[Node.js 24.22.3 发布说明](https://nodejs.org/en/blog/release/v24.22.3)、[Caddy 2.11.9 发布](https://github.com/caddyserver/caddy/releases/tag/v2.11.9)、[Caddy 安全公告](https://github.com/caddyserver/caddy/security/advisories)、[Docker Official Images](https://github.com/docker-library/official-images)。已按上游公告选择修复后的 Caddy 版本。当前开发环境无法访问 Debian 和 Alpine 的完整安全数据库，基础镜像传递依赖的完整漏洞扫描尚待完成。
 
 管理员界面由单独的服务端端点提供。该端点验证 Telegram 签名和 Owner ID。普通玩家收到的页面没有管理面板、AI 代下、VCF 提示、V 模式或清盘控制。
 
@@ -56,3 +56,9 @@ V 模式由管理员在指定好友局开启，可选定两个空位并确认。
 - 音乐由浏览器实时合成，默认静音，点击开启后播放，页面进入后台时暂停。
 
 街区大亨的 Telegram 好友对局与双人同屏分开。好友局由服务端判定回合与骰子，复用授权名单并保存独立棋局。Owner 在单独的管理界面可设定自己的下一次骰点，使用后清除。双人同屏无此入口。骰子翻滚约 0.48 秒，系统选择减少动态效果时即时出点。
+
+## 网页与 API 防护
+
+页面 CSP 只允许同源脚本及 Telegram 官方 SDK、同源资源和 API 连接。网页禁止摄像头、麦克风和定位。Node 和 Caddy 限制请求头和读取时间。游戏 API 的 JSON 上限为 2 KiB，Telegram webhook 为 32 KiB。游戏 API 每 IP 每分钟 900 次，已授权账号的读取和写入分别为 240 和 90 次。Webhook 使用独立额度，未通过密钥检查的请求每 IP 每分钟 60 次，通过检查后共享 300 次额度。限流记录只在进程内存中短期保留。只有在与仓库 Compose 相同的信任边界下启用 `TRUST_REVERSE_PROXY=1`，由唯一的公网反代覆盖转发地址，应用端口保持私有。
+
+Node.js 24.22.3 为官方 2026-11-10 安全修复版本。其已锁定的 Docker Official Image 摘要在 Dockerfile 中。Telegram SDK 的真实 WebView 验收及基础发行版传递依赖的完整扫描仍需单独验证。[Node.js 官方安全公告](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases) · [24.22.3 发布说明](https://nodejs.org/en/blog/release/v24.22.3)

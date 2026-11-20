@@ -1,7 +1,19 @@
 {
 	admin off
+
+	servers {
+		max_header_size 16384
+		timeouts {
+			read_header 8s
+			read_body 12s
+			write 20s
+			idle 60s
+		}
+	}
 }
 
 {$GOMOKU_DOMAIN} {
-	reverse_proxy app:8080
+	reverse_proxy app:8080 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }

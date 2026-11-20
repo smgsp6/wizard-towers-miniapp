@@ -4,6 +4,7 @@ services:
     build: .
     env_file: private/app.env
     environment:
+      TRUST_REVERSE_PROXY: "1"
       GOMOKU_DOMAIN: "${GOMOKU_DOMAIN:?Set the public domain}"
     volumes:
       - room-state:/state

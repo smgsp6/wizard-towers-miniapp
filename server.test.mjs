@@ -274,3 +274,44 @@ test('estate dice settings are owner-only, isolated, and consumed by one owner r
   assert.deepEqual(guest.game, rolled.game);
   assert(!Object.hasOwn(guest, 'management'));
 });
+
+test('CSP and device defenses apply, API limits are independent, and spoofed IPs cannot bypass them', async t => {
+  const server = makeServer({ token, owner: '101', allowed: ['202'], webhookSecret: 'synthetic-webhook' }).listen(0, '127.0.0.1');
+  t.after(() => server.close());
+  await once(server, 'listening');
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const home = await fetch(url);
+  const policy = home.headers.get('content-security-policy');
+  assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /script-src 'self' https:\/\/telegram\.org\/js\/telegram-web-app\.js/);
+  assert.match(policy, /connect-src 'self'/);
+  assert.match(policy, /frame-ancestors https:\/\/web\.telegram\.org/);
+  assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
+  assert.equal(home.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=()');
+  const headers = { 'X-Telegram-Init-Data': signed(202) };
+  const read = () => fetch(url + '/api/room', { headers });
+  for (let i = 0; i < 240; i++) assert.equal((await read()).status, 200);
+  const rejected = await read();
+  assert.equal(rejected.status, 429);
+  assert.match(rejected.headers.get('retry-after'), /^\d+$/);
+  const post = body => fetch(url + '/api/room', { method: 'POST', headers, body });
+  assert.equal((await post(JSON.stringify({ type: 'join' }))).status, 200);
+  assert.equal((await post('x'.repeat(2049))).status, 413);
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode('x'.repeat(2049)));
+    controller.close();
+  } });
+  assert.equal((await fetch(url + '/api/room', { method: 'POST', headers, body: stream, duplex: 'half' })).status, 413);
+  assert.equal((await post('{')).status, 400);
+  const webhook = (secret, body, forwarded = '203.0.113.1') => fetch(url + '/api/telegram', {
+    method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': secret, 'X-Forwarded-For': forwarded }, body,
+  });
+  for (let i = 1; i <= 60; i++) assert.equal((await webhook('invalid', '{}', `203.0.113.${i}`)).status, 403);
+  assert.equal((await webhook('invalid', '{}', '203.0.113.90')).status, 429);
+  assert.equal((await webhook('synthetic-webhook', 'x'.repeat(32769))).status, 413);
+  assert.equal((await webhook('synthetic-webhook', JSON.stringify({ message: { from: { id: 202 },
+    chat: { id: 202, type: 'private' }, text: { toString: null } } }))).status, 200);
+  const valid = await webhook('synthetic-webhook', JSON.stringify({ message: { from: { id: 202 },
+    chat: { id: 202, type: 'private' }, text: '/id' } }));
+  assert.equal((await valid.json()).chat_id, 202);
+});
