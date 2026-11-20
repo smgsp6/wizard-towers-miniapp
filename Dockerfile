@@ -3,7 +3,7 @@ WORKDIR /app
 RUN mkdir /state && chown node:node /state && chmod 700 /state
 COPY estate-admin.html estate-room.mjs checkers-admin.html checkers-room.mjs admin-panel.html server.mjs room-store.mjs gomoku-ai.mjs ./
 COPY public/ ./public/
-COPY deploy/register-webhook.mjs ./deploy/
+COPY deploy/register-webhook.mjs deploy/cloudflare-route.mjs ./deploy/
 RUN chmod -R a+rX /app
 USER node
 ENV HOST=0.0.0.0 PORT=8080 GOMOKU_STATE_FILE=/state/gomoku.json

@@ -11,4 +11,5 @@
 !public/**
 !deploy/
 !deploy/register-webhook.mjs
+!deploy/cloudflare-route.mjs
 !deploy/Caddyfile

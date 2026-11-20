@@ -6,11 +6,13 @@ umask 077
 
 mode=
 register_webhook=false
+configure_cloudflare=false
 for argument in "$@"; do
   case "$argument" in
     --cloudflare-tunnel) mode=tunnel ;;
+    --configure-cloudflare) mode=tunnel; configure_cloudflare=true ;;
     --register-webhook) register_webhook=true ;;
-    *) printf '用法：bash deploy/install.sh [--cloudflare-tunnel] [--register-webhook]\n' >&2; exit 2 ;;
+    *) printf '用法：bash deploy/install.sh [--cloudflare-tunnel] [--configure-cloudflare] [--register-webhook]\n' >&2; exit 2 ;;
   esac
 done
 printf '正在检查容器环境……\n'
@@ -87,6 +89,18 @@ if ! "${compose[@]}" up --build --detach --wait "${services[@]}" >/dev/null 2>&1
   fail '服务未能启动。请检查容器运行权限、镜像下载网络及所需端口是否被占用。'
 fi
 ( printf '%s\n' "$mode" > private/deploy-mode ) 2>/dev/null || fail '服务已启动，但无法保存部署模式。'
+if $configure_cloudflare; then
+  read -r -p '输入 Cloudflare 区域的根域名（例如 example.com）：' cf_zone || fail '未收到区域根域名。'
+  read -r -p '输入现有 Tunnel 的编号（UUID）：' cf_tunnel || fail '未收到 Tunnel 编号。'
+  read -rs -p '输入 Cloudflare API 令牌（输入内容不回显）：' cf_token || { printf '\n'; fail '未收到 Cloudflare API 令牌。'; }
+  printf '\n正在检查并配置这个游戏子域名……\n'
+  if ! printf '%s\n' "$cf_token" |
+      "${compose[@]}" exec -T app node deploy/cloudflare-route.mjs "$cf_zone" "$cf_tunnel" --apply 2>/dev/null; then
+    unset cf_token
+    fail '游戏服务已启动，但 Cloudflare 配置未完成。请检查区域、Tunnel 编号和 API 令牌权限。'
+  fi
+  unset cf_token
+fi
 if $register_webhook; then
   printf '正在注册 Telegram 机器人回调……\n'
   "${compose[@]}" exec -T app node deploy/register-webhook.mjs >/dev/null 2>&1 ||

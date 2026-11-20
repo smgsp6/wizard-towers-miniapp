@@ -76,3 +76,5 @@ bash deploy/install.sh --cloudflare-tunnel
 在 Cloudflare Zero Trust 的现有 Tunnel 中新增公开应用路由。主机名填游戏子域名，类型选 HTTP，目标填 `127.0.0.1:18080`。Cloudflare 会配置指向 Tunnel 的 DNS 记录，游戏子域名无需添加直连 VPS 的 A/AAAA 记录。如果连接器在有独立网络命名空间的容器里，它的 `127.0.0.1` 与宿主机不同，这个安装模式要求连接器能访问宿主机的回环地址。确认公网 HTTPS 可用后，再把完整网址填到 BotFather。如需启用 `/id`，在同目录运行 `bash deploy/install.sh --register-webhook`。
 
 Tunnel 模式保留账号与 webhook 的限流。源站忽略传入的转发 IP，连接器流量共享应用的 IP 级额度。
+
+若要在 VPS 安装时自动配置现有 Tunnel，执行 `bash deploy/install.sh --configure-cloudflare`。需要已加入 Cloudflare 的根域名、现有 Tunnel UUID，以及限定在对应区域和账号的 Cloudflare API 令牌（区域读取、DNS 编辑、Cloudflare Tunnel 编辑）。连接器令牌不具备管理 DNS 的权限。这一步只修改安装时填写的游戏子域名。令牌在终端输入、不回显，不写入磁盘。请避免同时在 Cloudflare 后台编辑同一个 Tunnel；DNS 配置与路由配置是两个独立的 API 操作。
