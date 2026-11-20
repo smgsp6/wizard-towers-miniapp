@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roomStore } from './room-store.mjs';
+import { chooseMove, hasFive, size } from './gomoku-ai.mjs';
+export { hasFive } from './gomoku-ai.mjs';
 
 export function telegramID(raw, token, now = Date.now()) {
   if (!token || typeof raw !== 'string' || !raw || raw.length > 8192) return null;
@@ -27,23 +29,6 @@ export function telegramID(raw, token, now = Date.now()) {
   }
 }
 
-const size = 15;
-export function hasFive(board, x, y, side) {
-  return [[1,0],[0,1],[1,1],[1,-1]].some(([dx,dy]) => {
-    let length = 1;
-    for (const direction of [-1,1]) {
-      let col = x + dx * direction;
-      let row = y + dy * direction;
-      while (col >= 0 && col < size && row >= 0 && row < size && board[row * size + col] === side) {
-        length++;
-        col += dx * direction;
-        row += dy * direction;
-      }
-    }
-    return length >= 5;
-  });
-}
-
 const validID = id => typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id) && Number.isSafeInteger(Number(id));
 const empty = (ai = false) => ({ joined: false, ai, dueAt: null, board: Array(size * size).fill(0), turn: 1, result: 0, last: null });
 
@@ -57,27 +42,8 @@ function place(game, index, side) {
 
 function playAI(game) {
   if (!game.ai || !game.joined || game.result || game.turn !== 1) return;
-  let best = -1;
-  let bestScore = -Infinity;
-  for (const [index, occupied] of game.board.entries()) {
-    if (occupied) continue;
-    const x = index % size, y = Math.floor(index / size);
-    const wins = hasFive(game.board, x, y, 1);
-    const blocks = hasFive(game.board, x, y, 2);
-    let score = wins ? 10000 : blocks ? 5000 : 0;
-    score -= Math.abs(x - 7) + Math.abs(y - 7);
-    for (let row = Math.max(0, y - 2); row <= Math.min(size - 1, y + 2); row++) {
-      for (let col = Math.max(0, x - 2); col <= Math.min(size - 1, x + 2); col++) {
-        const neighbor = game.board[row * size + col];
-        if (neighbor) score += (3 - Math.max(Math.abs(x - col), Math.abs(y - row))) * (neighbor === 1 ? 3 : 2);
-      }
-    }
-    if (score > bestScore) {
-      best = index;
-      bestScore = score;
-    }
-  }
-  if (best !== -1) place(game, best, 1);
+  const move = chooseMove(game.board);
+  if (move !== -1) place(game, move, 1);
 }
 
 async function readJSON(req, limit) {
