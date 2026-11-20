@@ -62,3 +62,17 @@ V 模式由管理员在指定好友局开启，可选定两个空位并确认。
 页面 CSP 只允许同源脚本及 Telegram 官方 SDK、同源资源和 API 连接。网页禁止摄像头、麦克风和定位。Node 和 Caddy 限制请求头和读取时间。游戏 API 的 JSON 上限为 2 KiB，Telegram webhook 为 32 KiB。游戏 API 每 IP 每分钟 900 次，已授权账号的读取和写入分别为 240 和 90 次。Webhook 使用独立额度，未通过密钥检查的请求每 IP 每分钟 60 次，通过检查后共享 300 次额度。限流记录只在进程内存中短期保留。只有在与仓库 Compose 相同的信任边界下启用 `TRUST_REVERSE_PROXY=1`，由唯一的公网反代覆盖转发地址，应用端口保持私有。
 
 Node.js 24.22.3 为官方 2026-11-10 安全修复版本。其已锁定的 Docker Official Image 摘要在 Dockerfile 中。Telegram SDK 的真实 WebView 验收及基础发行版传递依赖的完整扫描仍需单独验证。[Node.js 官方安全公告](https://nodejs.org/en/blog/vulnerability/november-2026-security-releases) · [24.22.3 发布说明](https://nodejs.org/en/blog/release/v24.22.3)
+
+### 使用已有的 Cloudflare Tunnel
+
+适用于 `cloudflared` 已在同一台 VPS 的宿主机上运行的情况。需要 Docker Engine 28 或更新版本与 Compose v2。运行：
+
+```sh
+bash deploy/install.sh --cloudflare-tunnel
+```
+
+脚本只启动应用，源站绑定 `127.0.0.1:18080`，无需开放 80、443 或 18080，也无需把 Tunnel 令牌给脚本。它会记住 Tunnel 模式。如果同一 Compose 项目的公网 Caddy 已在运行，脚本会停止切换。要转换已有的直连安装，先在原安装目录用 `docker compose --env-file private/compose.env stop proxy` 停止本项目的 Caddy，保留同一个项目名和存档卷。
+
+在 Cloudflare Zero Trust 的现有 Tunnel 中新增公开应用路由。主机名填游戏子域名，类型选 HTTP，目标填 `127.0.0.1:18080`。Cloudflare 会配置指向 Tunnel 的 DNS 记录，游戏子域名无需添加直连 VPS 的 A/AAAA 记录。如果连接器在有独立网络命名空间的容器里，它的 `127.0.0.1` 与宿主机不同，这个安装模式要求连接器能访问宿主机的回环地址。确认公网 HTTPS 可用后，再把完整网址填到 BotFather。如需启用 `/id`，在同目录运行 `bash deploy/install.sh --register-webhook`。
+
+Tunnel 模式保留账号与 webhook 的限流。源站忽略传入的转发 IP，连接器流量共享应用的 IP 级额度。

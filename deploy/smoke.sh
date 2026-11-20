@@ -9,7 +9,7 @@ cleanup() {
   rm -rf -- "$workspace"
 }
 trap cleanup EXIT
-cp -r Dockerfile Dockerfile.proxy .dockerignore compose.yaml estate-admin.html estate-room.mjs checkers-admin.html checkers-room.mjs admin-panel.html server.mjs room-store.mjs gomoku-ai.mjs public deploy "$workspace/"
+cp -r Dockerfile Dockerfile.proxy .dockerignore compose.yaml compose.tunnel.yaml estate-admin.html estate-room.mjs checkers-admin.html checkers-room.mjs admin-panel.html server.mjs room-store.mjs gomoku-ai.mjs public deploy "$workspace/"
 mkdir -m 700 "$workspace/private"
 printf 'GOMOKU_DOMAIN=localhost\n' > "$workspace/private/compose.env"
 printf 'TELEGRAM_OWNER_ID=101\nTELEGRAM_BOT_TOKEN=synthetic-testing\n' > "$workspace/private/app.env"
@@ -31,6 +31,7 @@ fi
 "${compose[@]}" exec -T app node -e '
   if (require("node:fs").readFileSync("/state/synthetic-check", "utf8") !== "ok") process.exit(1);
 '
+direct_ok=false
 for attempt in {1..15}; do
   if "${compose[@]}" exec -T proxy cat /data/caddy/pki/authorities/local/root.crt |
      "${compose[@]}" exec -T app node -e '
@@ -47,10 +48,30 @@ for attempt in {1..15}; do
        }).on("error", error => { console.error(error.code); process.exitCode = 1; });
      '; then
     printf 'Docker 启动、持久卷和本地 HTTPS 代理验证通过。\n'
-    exit 0
+    direct_ok=true
+    break
   fi
   sleep 1
 done
-"${compose[@]}" logs --no-color proxy
-printf '本地 HTTPS 代理验证失败。\n' >&2
-exit 1
+if ! $direct_ok; then
+  "${compose[@]}" logs --no-color proxy
+  printf '本地 HTTPS 代理验证失败。\n' >&2
+  exit 1
+fi
+
+if (cd "$workspace" && COMPOSE_PROJECT_NAME="$project" bash deploy/install.sh --cloudflare-tunnel </dev/null); then
+  printf '切换 Tunnel 时应拒绝仍在运行的公网代理。\n' >&2
+  exit 1
+fi
+"${compose[@]}" stop proxy
+(cd "$workspace" && COMPOSE_PROJECT_NAME="$project" bash deploy/install.sh --cloudflare-tunnel </dev/null)
+test "$(cat "$workspace/private/deploy-mode")" = tunnel
+tunnel=(docker compose -p "$project" -f "$workspace/compose.yaml" -f "$workspace/compose.tunnel.yaml" --env-file "$workspace/private/compose.env")
+test "$("${tunnel[@]}" port app 8080)" = '127.0.0.1:18080'
+test -z "$("${compose[@]}" ps --status running --quiet proxy)"
+curl --noproxy 127.0.0.1 --fail --silent --show-error http://127.0.0.1:18080/ -o "$workspace/tunnel-response.html"
+grep -Fq '游戏大厅' "$workspace/tunnel-response.html"
+"${tunnel[@]}" exec -T app node -e 'if (require("node:fs").readFileSync("/state/synthetic-check", "utf8") !== "ok") process.exit(1)'
+(cd "$workspace" && COMPOSE_PROJECT_NAME="$project" bash deploy/install.sh </dev/null)
+test -z "$("${compose[@]}" ps --status running --quiet proxy)"
+printf 'Cloudflare Tunnel 本机源站、模式保留与持久卷验证通过。\n'
